@@ -166,7 +166,8 @@ addressed to somebody else changes nothing, and `acknowledged` tells you how man
 |------------------|------------------------------------------------|----------------------|
 | `task.commands`  | —                                              | `{commands[]}`       |
 | `task.submit`    | `command`, `workdir`, `wait`, `timeout`        | `{task}`             |
-| `task.claim`     | `resource`, `lease_id`                         | `{task, run[], time_limit}` |
+| `task.wait`      | `resource`                                     | `{available}`        |
+| `task.claim`     | `resource`, `lease_id`, `no_wait`              | `{task, run[], time_limit}` |
 | `task.output`    | `task_id`, `chunk`                             | `{recorded}`         |
 | `task.complete`  | `task_id`, `exit_code`, `failure`              | `{task}`             |
 | `task.status`    | `task_id`, `wait`                              | `{task}`             |
@@ -178,8 +179,12 @@ configuration. There is no parameter anywhere in this API that lets a requester 
 execute, which is what makes dispatch safe to have at all. An empty `workdir` means the
 requester's own, and any other is checked against the allowed roots.
 
-`task.claim` blocks until there is work, and requires a `lease_id` the caller already holds on that
-resource — dispatched work counts against the same capacity as everything else. The reply carries
+A worker's loop is `task.wait`, then `lease.acquire`, then `task.claim` with `no_wait`. That order
+matters: `task.wait` grants nothing and needs no slot, so an idle worker does not occupy capacity it
+is not using — two idle workers on a two-slot resource would otherwise leave nobody else able to run
+anything. `task.claim` then requires a `lease_id` the caller really holds on that resource, which is
+what keeps dispatched work inside the same capacity limit as everything else; with `no_wait`, a
+worker that lost the race to another is told at once and can give its slot back. The reply carries
 `run`, the command from the configuration, which is the only place the worker gets it from.
 
 A worker reports progress with `task.output`; the daemon pushes each chunk to the requester as a

@@ -96,6 +96,7 @@ func (a *API) Register(router *jsonrpc.Router) {
 
 	router.Register("task.commands", a.authenticated(a.handleTaskCommands))
 	router.Register("task.submit", a.authenticated(a.handleTaskSubmit))
+	router.Register("task.wait", a.authenticated(a.handleTaskWait))
 	router.Register("task.claim", a.authenticated(a.handleTaskClaim))
 	router.Register("task.output", a.authenticated(a.handleTaskOutput))
 	router.Register("task.complete", a.authenticated(a.handleTaskComplete))

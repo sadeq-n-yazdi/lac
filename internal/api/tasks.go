@@ -149,6 +149,43 @@ type TaskClaimParams struct {
 	// LeaseID is the slot the worker already holds on that resource. Dispatched work runs inside
 	// the same capacity limit as everything else, and this is what proves it.
 	LeaseID string `json:"lease_id"`
+	// NoWait returns at once when there is nothing queued, so a worker that lost the race to
+	// another can give its slot back rather than sit on it.
+	NoWait bool `json:"no_wait,omitempty"`
+}
+
+// TaskWaitParams waits for work to exist, without claiming it and without needing a slot.
+type TaskWaitParams struct {
+	Resource string `json:"resource"`
+}
+
+// TaskWaitResult says there is something to do.
+type TaskWaitResult struct {
+	Available bool `json:"available"`
+}
+
+// handleTaskWait lets a worker wait for work *before* taking a slot.
+//
+// It grants nothing, which is the point: a worker that took a slot first and then waited would
+// occupy capacity it is not using, and two idle workers on a two-slot resource would leave nobody
+// else able to run anything.
+func (a *API) handleTaskWait(
+	ctx context.Context, caller core.Agent, _ *jsonrpc.Session, params json.RawMessage,
+) (any, error) {
+	var arguments TaskWaitParams
+	if err := jsonrpc.ParseParams(params, &arguments); err != nil {
+		return nil, err
+	}
+
+	if err := a.authenticator.Authorise(ctx, caller, auth.PermissionLease, arguments.Resource); err != nil {
+		return nil, err
+	}
+
+	if err := a.dispatch.WaitForWork(ctx, arguments.Resource); err != nil {
+		return nil, err
+	}
+
+	return TaskWaitResult{Available: true}, nil
 }
 
 // TaskClaimResult is the work, and the command to run for it.
@@ -174,7 +211,7 @@ func (a *API) handleTaskClaim(
 		return nil, err
 	}
 
-	claimed, err := a.dispatch.Claim(ctx, arguments.Resource, caller.ID, arguments.LeaseID)
+	claimed, err := a.dispatch.Claim(ctx, arguments.Resource, caller.ID, arguments.LeaseID, arguments.NoWait)
 	if err != nil {
 		return nil, err
 	}

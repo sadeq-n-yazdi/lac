@@ -139,7 +139,7 @@ func TestSubmitClaimAndComplete(t *testing.T) {
 
 	lease := subject.takeSlot(t, worker)
 
-	claimed, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID)
+	claimed, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false)
 	if err != nil {
 		t.Fatalf("Claim() = %v, want nil", err)
 	}
@@ -230,13 +230,13 @@ func TestAWorkerMustHoldASlot(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 
-	if _, err := subject.service.Claim(ctx, "test", worker.ID, ""); !errors.Is(err, core.ErrInvalidArgument) {
+	if _, err := subject.service.Claim(ctx, "test", worker.ID, "", false); !errors.Is(err, core.ErrInvalidArgument) {
 		t.Errorf("Claim() with no lease = %v, want ErrInvalidArgument", err)
 	}
 
 	// A lease that belongs to somebody else is no better than none.
 	lease := subject.takeSlot(t, worker)
-	if _, err := subject.service.Claim(ctx, "test", stranger.ID, lease.ID); !errors.Is(err, core.ErrUnauthorised) {
+	if _, err := subject.service.Claim(ctx, "test", stranger.ID, lease.ID, false); !errors.Is(err, core.ErrUnauthorised) {
 		t.Errorf("Claim() with another agent's lease = %v, want ErrUnauthorised", err)
 	}
 }
@@ -264,7 +264,7 @@ func TestATaskIsClaimedOnce(t *testing.T) {
 	firstLease := subject.takeSlot(t, first)
 	secondLease := subject.takeSlot(t, second)
 
-	claimed, err := subject.service.Claim(t.Context(), "test", first.ID, firstLease.ID)
+	claimed, err := subject.service.Claim(t.Context(), "test", first.ID, firstLease.ID, false)
 	if err != nil {
 		t.Fatalf("the first Claim() = %v, want nil", err)
 	}
@@ -276,7 +276,7 @@ func TestATaskIsClaimedOnce(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
 
-	if _, err := subject.service.Claim(ctx, "test", second.ID, secondLease.ID); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := subject.service.Claim(ctx, "test", second.ID, secondLease.ID, false); !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("the second Claim() = %v, want it to wait for work that never came", err)
 	}
 }
@@ -290,7 +290,7 @@ func TestClaimWaitsForWork(t *testing.T) {
 
 	claimed := make(chan dispatch.Claimed, 1)
 	go func() {
-		result, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID)
+		result, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false)
 		if err != nil {
 			t.Errorf("Claim() = %v, want nil", err)
 			return
@@ -332,7 +332,7 @@ func TestAwaitReturnsWhenTheWorkIsDone(t *testing.T) {
 	}
 
 	lease := subject.takeSlot(t, worker)
-	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID); err != nil {
+	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false); err != nil {
 		t.Fatalf("Claim() = %v, want nil", err)
 	}
 
@@ -376,7 +376,7 @@ func TestOnlyTheRunningWorkerMayReport(t *testing.T) {
 	}
 
 	lease := subject.takeSlot(t, worker)
-	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID); err != nil {
+	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false); err != nil {
 		t.Fatalf("Claim() = %v, want nil", err)
 	}
 
@@ -402,7 +402,7 @@ func TestAnAbandonedTaskIsRequeued(t *testing.T) {
 	}
 
 	lease := subject.takeSlot(t, worker)
-	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID); err != nil {
+	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false); err != nil {
 		t.Fatalf("Claim() = %v, want nil", err)
 	}
 	if err := subject.service.AppendOutput(t.Context(), task.ID, worker.ID, "half a test run\n"); err != nil {
@@ -469,7 +469,7 @@ func TestCancel(t *testing.T) {
 	}
 
 	lease := subject.takeSlot(t, worker)
-	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID); err != nil {
+	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false); err != nil {
 		t.Fatalf("Claim() = %v, want nil", err)
 	}
 
@@ -492,7 +492,7 @@ func TestOutputIsCappedKeepingTheEnd(t *testing.T) {
 	}
 
 	lease := subject.takeSlot(t, worker)
-	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID); err != nil {
+	if _, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, false); err != nil {
 		t.Fatalf("Claim() = %v, want nil", err)
 	}
 
@@ -513,5 +513,55 @@ func TestOutputIsCappedKeepingTheEnd(t *testing.T) {
 	}
 	if !strings.HasSuffix(stored.Output, "FAIL: the parser\n") {
 		t.Error("the end of the output was dropped; that is where the failure is")
+	}
+}
+
+// An idle worker must not sit on a slot. Waiting for work is what happens first; the slot is taken
+// only when there is something to do. Otherwise two idle workers on a two-slot resource would leave
+// nobody else able to run anything.
+func TestWaitingForWorkNeedsNoSlot(t *testing.T) {
+	subject := newHarness(t)
+	requester := subject.newAgent(t, "claude-a", "/tmp/project")
+
+	waiting := make(chan error, 1)
+	go func() { waiting <- subject.service.WaitForWork(t.Context(), "test") }()
+
+	// Nothing queued yet, so the worker is still waiting — and the resource is still free.
+	time.Sleep(50 * time.Millisecond)
+
+	status, err := subject.leasing.Status(t.Context(), "test")
+	if err != nil {
+		t.Fatalf("Status() = %v, want nil", err)
+	}
+	if status.ActiveLeases != 0 {
+		t.Errorf("%d slots are held while the worker is merely waiting, want 0", status.ActiveLeases)
+	}
+
+	if _, err := subject.service.Submit(t.Context(), dispatch.SubmitRequest{
+		RequesterID: requester.ID, CommandKey: "test",
+	}); err != nil {
+		t.Fatalf("Submit() = %v, want nil", err)
+	}
+
+	select {
+	case err := <-waiting:
+		if err != nil {
+			t.Errorf("WaitForWork() = %v, want nil", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Error("WaitForWork() did not return when work was submitted")
+	}
+}
+
+// A worker that queued for a slot only to find another took the work must be told at once, so it
+// can give the slot back rather than sit on it.
+func TestClaimNoWaitReturnsWhenThereIsNothingLeft(t *testing.T) {
+	subject := newHarness(t)
+	worker := subject.newAgent(t, "test-runner", "/tmp/runner")
+	lease := subject.takeSlot(t, worker)
+
+	_, err := subject.service.Claim(t.Context(), "test", worker.ID, lease.ID, true)
+	if !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("Claim(noWait) with nothing queued = %v, want ErrNotFound", err)
 	}
 }

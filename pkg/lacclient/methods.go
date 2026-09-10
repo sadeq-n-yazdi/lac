@@ -537,13 +537,22 @@ type ClaimedTask struct {
 	TimeLimit string `json:"time_limit"`
 }
 
-// ClaimTask waits for work on a resource. The caller must already hold the lease it names: that is
-// what keeps dispatched work inside the same capacity limit as everything else.
-func (c *Client) ClaimTask(ctx context.Context, resource, leaseID string) (ClaimedTask, error) {
+// WaitForWork blocks until there is something queued for a resource. It grants nothing and needs no
+// slot, so a worker can wait for work *before* occupying capacity it is not yet using.
+func (c *Client) WaitForWork(ctx context.Context, resource string) error {
+	return c.Call(ctx, "task.wait", map[string]any{"resource": resource}, nil)
+}
+
+// ClaimTask takes work on a resource. The caller must already hold the lease it names: that is what
+// keeps dispatched work inside the same capacity limit as everything else.
+//
+// With noWait, a worker that finds nothing left — because another was quicker — is told at once, so
+// it can give its slot back rather than sit on it.
+func (c *Client) ClaimTask(ctx context.Context, resource, leaseID string, noWait bool) (ClaimedTask, error) {
 	var result ClaimedTask
 
 	err := c.Call(ctx, "task.claim",
-		map[string]any{"resource": resource, "lease_id": leaseID}, &result)
+		map[string]any{"resource": resource, "lease_id": leaseID, "no_wait": noWait}, &result)
 
 	return result, err
 }

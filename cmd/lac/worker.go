@@ -68,13 +68,19 @@ func runWorker(ctx context.Context, env *environment, arguments []string) error 
 	}
 }
 
-// workOnce takes a slot, claims one task, runs it, reports it, and gives the slot back.
+// workOnce waits for work, takes a slot, runs the job, reports it, and gives the slot back.
 //
-// The slot is taken before the work is claimed and given back after it is reported, so dispatched
-// work counts against the resource's capacity exactly as `lac run` does.
+// The order matters. Waiting for work happens *before* taking a slot, because an idle worker
+// holding a slot occupies capacity it is not using — two idle workers on a two-slot resource would
+// leave nobody else able to run anything. The slot is then held for exactly as long as the work
+// runs, so dispatched work counts against capacity exactly as `lac run` does.
 func workOnce(ctx context.Context, client *lacclient.Client, resource string, quiet bool) error {
+	if err := client.WaitForWork(ctx, resource); err != nil {
+		return fmt.Errorf("waiting for work on %q: %w", resource, err)
+	}
+
 	lease, err := client.Acquire(ctx, lacclient.AcquireRequest{
-		Resource: resource, Reason: "waiting for work to dispatch",
+		Resource: resource, Reason: "running dispatched work",
 	})
 	if err != nil {
 		return fmt.Errorf("taking a slot on %q: %w", resource, err)
@@ -89,9 +95,15 @@ func workOnce(ctx context.Context, client *lacclient.Client, resource string, qu
 		}
 	}()
 
-	claimed, err := client.ClaimTask(ctx, resource, lease.ID)
+	// Another worker may have taken it while we were queueing for a slot. Say so and loop, rather
+	// than holding the slot open waiting for the next piece of work to arrive.
+	claimed, err := client.ClaimTask(ctx, resource, lease.ID, true)
 	if err != nil {
-		return fmt.Errorf("waiting for work on %q: %w", resource, err)
+		if lacclient.ErrorCode(err) == lacclient.CodeNotFound {
+			return nil
+		}
+
+		return fmt.Errorf("claiming work on %q: %w", resource, err)
 	}
 
 	if !quiet {

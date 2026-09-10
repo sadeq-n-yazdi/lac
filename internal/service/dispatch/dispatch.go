@@ -183,12 +183,45 @@ type Claimed struct {
 	Command Command
 }
 
+// WaitForWork blocks until there is something queued for a resource, and grants nothing.
+//
+// A worker calls this *before* taking a slot. The obvious order — take a slot, then wait for work —
+// has an idle worker occupying capacity it is not using, so on a two-slot resource two idle workers
+// would leave nobody else able to run anything.
+func (s *Service) WaitForWork(ctx context.Context, resourceName string) error {
+	for {
+		// Watch before looking, so work submitted while we are looking still wakes us.
+		arrived := s.arrivals.watch(resourceName)
+
+		_, err := s.store.Tasks().NextQueued(ctx, resourceName)
+		switch {
+		case err == nil:
+			return nil
+		case !errors.Is(err, core.ErrNotFound):
+			return err
+		}
+
+		timer := time.NewTimer(recheckInterval)
+
+		select {
+		case <-arrived:
+			timer.Stop()
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err() //nolint:wrapcheck // the caller compares with context errors
+		}
+	}
+}
+
 // Claim waits for work on a resource and hands it to a worker holding a slot.
 //
 // The worker must already hold the lease it passes: that is what keeps dispatched work inside the
-// same capacity limit as everything else.
+// same capacity limit as everything else. With noWait, a worker that finds nothing left — because
+// another worker was quicker — is told so at once, so it can give its slot back instead of sitting
+// on it.
 func (s *Service) Claim(
-	ctx context.Context, resourceName, workerID, leaseID string,
+	ctx context.Context, resourceName, workerID, leaseID string, noWait bool,
 ) (Claimed, error) {
 	if leaseID == "" {
 		return Claimed{}, fmt.Errorf("%w: a worker must hold a slot before claiming work",
@@ -208,6 +241,11 @@ func (s *Service) Claim(
 		}
 		if found {
 			return claimed, nil
+		}
+
+		if noWait {
+			return Claimed{}, fmt.Errorf("%w: there is no work queued for %q",
+				core.ErrNotFound, resourceName)
 		}
 
 		timer := time.NewTimer(recheckInterval)

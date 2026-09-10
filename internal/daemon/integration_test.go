@@ -626,6 +626,10 @@ func TestARequesterCannotNameACommandLine(t *testing.T) {
 func runWorkerOnce(t *testing.T, client *lacclient.Client, resource string) {
 	t.Helper()
 
+	if err := client.WaitForWork(t.Context(), resource); err != nil {
+		t.Fatalf("WaitForWork() = %v, want nil", err)
+	}
+
 	lease, err := client.Acquire(t.Context(), lacclient.AcquireRequest{Resource: resource})
 	if err != nil {
 		t.Fatalf("Acquire() = %v, want nil", err)
@@ -636,7 +640,7 @@ func runWorkerOnce(t *testing.T, client *lacclient.Client, resource string) {
 		}
 	}()
 
-	claimed, err := client.ClaimTask(t.Context(), resource, lease.ID)
+	claimed, err := client.ClaimTask(t.Context(), resource, lease.ID, true)
 	if err != nil {
 		t.Fatalf("ClaimTask() = %v, want nil", err)
 	}
