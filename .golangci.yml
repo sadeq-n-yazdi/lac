@@ -49,6 +49,8 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+        # `if err := f(); err != nil` is the idiom, and shadow flags every one of them.
+        - shadow
     misspell:
       locale: UK
     nolintlint:
