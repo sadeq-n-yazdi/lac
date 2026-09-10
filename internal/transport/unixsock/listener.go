@@ -126,8 +126,14 @@ func (l *Listener) Path() string { return l.path }
 
 // Close stops accepting and removes the socket file, so the next start does not have to decide
 // whether it is stale.
+//
+// It is idempotent: the server closes the listener to unblock Accept during shutdown, and the
+// daemon closes it again on the way out.
 func (l *Listener) Close() error {
-	err := l.inner.Close()
+	var err error
+	if closeErr := l.inner.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+		err = closeErr
+	}
 
 	if removeErr := os.Remove(l.path); removeErr != nil && !os.IsNotExist(removeErr) {
 		err = errors.Join(err, fmt.Errorf("removing %s: %w", l.path, removeErr))
