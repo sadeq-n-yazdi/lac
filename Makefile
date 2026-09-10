@@ -66,3 +66,7 @@ check: lint test vuln ## Everything CI runs
 .PHONY: clean
 clean: ## Remove build artefacts
 	rm -rf $(BINARY_DIR) coverage.out
+
+.PHONY: sync-skill
+sync-skill: ## Copy the skill into the package that embeds it
+	cp skills/lac/SKILL.md internal/skill/SKILL.md

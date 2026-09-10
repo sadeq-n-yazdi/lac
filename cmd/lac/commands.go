@@ -29,6 +29,8 @@ func commands() []command {
 		{name: "release", summary: "give a slot back", run: runRelease},
 		{name: "held", summary: "the slots you are holding", run: runHeld},
 		{name: "run", summary: "wait for a slot, then run a command", run: runRun},
+		{name: "mcp", summary: "serve LAC over MCP on stdin and stdout, for AI tools", run: runMCP},
+		{name: "skill", summary: "install the LAC skill for AI tools that read skills", run: runSkill},
 		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},
 	}
 }

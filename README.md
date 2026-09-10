@@ -102,6 +102,17 @@ to `~/.config/lac/config.yaml` and edit it. An operator can also define one on t
 lac --name operator define --capacity 4 --description "concurrent test runs" test
 ```
 
+## Using it from an AI tool
+
+LAC speaks MCP, so Claude Code and Codex can use it directly:
+
+```sh
+claude mcp add lac -- lac mcp   # register the server
+lac skill install               # teach the model when to use it
+```
+
+See [docs/mcp.md](docs/mcp.md) for Codex, for other clients, and for what the model gets.
+
 ## Files and paths
 
 LAC follows the XDG base directory spec:

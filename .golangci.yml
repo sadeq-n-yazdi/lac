@@ -57,6 +57,13 @@ linters:
         - shadow
     misspell:
       locale: UK
+      # MCP's method and field names are fixed by its specification, and spelling them the British
+      # way would simply break the protocol.
+      ignore-rules:
+        - initialize
+        - initialized
+        - serialize
+        - serialized
     nolintlint:
       require-explanation: true
       require-specific: true

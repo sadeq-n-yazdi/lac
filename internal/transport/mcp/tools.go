@@ -1,0 +1,521 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"code.sadeq.uk/lac/pkg/lacclient"
+)
+
+// toolHandler runs one tool. It never returns an error: a failure the model should read about
+// comes back as an error result, because a protocol error never reaches the model at all.
+type toolHandler func(ctx context.Context, server *Server, client *lacclient.Client, arguments json.RawMessage) callToolResult
+
+// toolDefinitions describes the tools to the model.
+//
+// The descriptions are written for an AI reader deciding whether to call something, not for a
+// developer reading an API reference: they say when to use the tool and what happens if you skip
+// it, because that is the decision the model is actually making.
+func toolDefinitions() []tool {
+	return []tool{
+		{
+			Name:  "lac_agents",
+			Title: "Who else is working",
+			Description: "List the other AI agents working on this machine right now, with the " +
+				"directory each is in. Call this before starting on an area of the codebase, so you " +
+				"do not duplicate or undo somebody else's work, and whenever the user asks what " +
+				"everyone is doing.",
+			InputSchema: object(nil, nil),
+		},
+		{
+			Name:  "lac_resources",
+			Title: "Shared resources and how busy they are",
+			Description: "List the scarce things on this machine — concurrent test runs, a shared " +
+				"reviewer session — with how many slots are in use and how many agents are waiting. " +
+				"Call this to find out what you must queue for before running heavy work.",
+			InputSchema: object(nil, nil),
+		},
+		{
+			Name:  "lac_acquire_slot",
+			Title: "Wait for a slot before doing heavy work",
+			Description: "Reserve a slot on a shared resource and wait your turn. Call this BEFORE " +
+				"running a test suite, a build, or anything else the machine can only do a few of at " +
+				"once — starting without a slot is what makes the machine thrash and everybody's " +
+				"work slower. The call blocks until the slot is yours. Hold it while you work, then " +
+				"call lac_release_slot. If it times out, that is not a failure: call it again.",
+			InputSchema: object(map[string]any{
+				"resource": property("string",
+					"The resource to queue for, such as \"test\". Use lac_resources to see what exists."),
+				"reason": property("string",
+					"What you are about to do, shown to the operator in the queue. For example \"running the parser tests\"."),
+				"priority": property("integer",
+					"Higher goes first. Leave unset for normal work; 10 is for something the user is waiting on."),
+				"no_wait": property("boolean",
+					"Return immediately if the resource is full instead of queueing. Use this only when you have something else useful to do."),
+			}, []string{"resource"}),
+		},
+		{
+			Name:  "lac_release_slot",
+			Title: "Give a slot back",
+			Description: "Release a slot you were granted, as soon as the work is finished — even " +
+				"if it failed. Another agent is waiting for it. If you lost the lease id, call " +
+				"lac_my_slots.",
+			InputSchema: object(map[string]any{
+				"lease_id": property("string", "The lease id lac_acquire_slot gave you."),
+			}, []string{"lease_id"}),
+		},
+		{
+			Name:  "lac_my_slots",
+			Title: "Slots you are holding",
+			Description: "List the slots you currently hold, with their lease ids and when they " +
+				"expire. Use it to find a lease id you need to release, or to check you are not " +
+				"holding something you have finished with.",
+			InputSchema: object(nil, nil),
+		},
+		{
+			Name:  "lac_queue",
+			Title: "Who is waiting for a resource",
+			Description: "Show who holds a resource and who is queued for it, in the order they " +
+				"will be served. Useful for telling the user why something is waiting.",
+			InputSchema: object(map[string]any{
+				"resource": property("string", "The resource to inspect, such as \"test\"."),
+			}, []string{"resource"}),
+		},
+		{
+			Name:  "lac_send_message",
+			Title: "Tell another agent something",
+			Description: "Send a message to one agent by name, or to every agent at once. Use it to " +
+				"say what you are taking on before you start, to answer a question, or to warn " +
+				"others about something you changed. Messages wait for the recipient, so it is safe " +
+				"to send to an agent that is busy.",
+			InputSchema: object(map[string]any{
+				"to": property("string",
+					"The agent to tell, by name from lac_agents. Leave unset and set broadcast to reach everyone."),
+				"broadcast": property("boolean",
+					"Send to every agent instead of one. Use sparingly: it interrupts everybody."),
+				"kind": property("string",
+					"A short label for what this is: \"status\", \"question\", \"answer\", \"warning\"."),
+				"text": property("string", "What you want to say, in plain language."),
+			}, []string{"kind", "text"}),
+		},
+		{
+			Name:  "lac_inbox",
+			Title: "Read messages sent to you",
+			Description: "Read the messages other agents have sent you. Call this when you start " +
+				"work and between tasks: another agent may have told you they are already changing " +
+				"the file you were about to touch. Messages come back until you acknowledge them, " +
+				"which happens by default.",
+			InputSchema: object(map[string]any{
+				"keep_unread": property("boolean",
+					"Leave the messages in the inbox instead of acknowledging them, so they appear again next time."),
+			}, nil),
+		},
+	}
+}
+
+func toolHandlers() map[string]toolHandler {
+	return map[string]toolHandler{
+		"lac_agents":       handleAgents,
+		"lac_resources":    handleResources,
+		"lac_acquire_slot": handleAcquireSlot,
+		"lac_release_slot": handleReleaseSlot,
+		"lac_my_slots":     handleMySlots,
+		"lac_queue":        handleQueue,
+		"lac_send_message": handleSendMessage,
+		"lac_inbox":        handleInbox,
+	}
+}
+
+func handleAgents(ctx context.Context, server *Server, client *lacclient.Client, _ json.RawMessage) callToolResult {
+	agents, err := client.Agents(ctx)
+	if err != nil {
+		return errorResult("Could not read the agent roster: %v", err)
+	}
+
+	others := make([]lacclient.Agent, 0, len(agents))
+	for _, agent := range agents {
+		if agent.ID != server.agent.ID {
+			others = append(others, agent)
+		}
+	}
+
+	if len(others) == 0 {
+		return textResult("No other agents are working on this machine right now. " +
+			"You are registered as \"" + server.agent.Name + "\".")
+	}
+
+	var report strings.Builder
+	fmt.Fprintf(&report, "%d other agent(s) working right now (you are %q):\n\n",
+		len(others), server.agent.Name)
+
+	for _, agent := range others {
+		fmt.Fprintf(&report, "- %s (%s) in %s\n", agent.Name, agent.Kind, agent.Workdir)
+	}
+
+	return textResult(report.String())
+}
+
+func handleResources(ctx context.Context, _ *Server, client *lacclient.Client, _ json.RawMessage) callToolResult {
+	resources, err := client.Resources(ctx)
+	if err != nil {
+		return errorResult("Could not read the resources: %v", err)
+	}
+	if len(resources) == 0 {
+		return textResult("No shared resources are defined on this machine, so nothing needs " +
+			"queueing for. The operator defines them in ~/.config/lac/config.yaml.")
+	}
+
+	var report strings.Builder
+	report.WriteString("Shared resources on this machine:\n\n")
+
+	for _, item := range resources {
+		fmt.Fprintf(&report, "- %s: %d of %d slots in use, %d waiting",
+			item.Name, item.Held, item.Capacity, item.Waiting)
+		if item.Description != "" {
+			fmt.Fprintf(&report, " — %s", item.Description)
+		}
+		report.WriteString("\n")
+	}
+
+	report.WriteString("\nAcquire a slot with lac_acquire_slot before running work that needs one.")
+
+	return textResult(report.String())
+}
+
+// acquireArguments is what the model asks for when it wants a slot.
+type acquireArguments struct {
+	Resource string `json:"resource"`
+	Reason   string `json:"reason"`
+	Priority int    `json:"priority"`
+	NoWait   bool   `json:"no_wait"`
+}
+
+func handleAcquireSlot(
+	ctx context.Context, server *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request acquireArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.Resource == "" {
+		return errorResult("Which resource? Give resource, for example \"test\". " +
+			"lac_resources lists what exists.")
+	}
+
+	lease, err := client.Acquire(ctx, lacclient.AcquireRequest{
+		Resource: request.Resource,
+		Reason:   request.Reason,
+		Priority: request.Priority,
+		NoWait:   request.NoWait,
+		Timeout:  server.options.AcquireTimeout,
+	})
+
+	switch {
+	case lacclient.IsCapacityReached(err):
+		return textResult(fmt.Sprintf(
+			"%q is fully in use right now and you asked not to wait. Either do something else and "+
+				"try again, or call this again without no_wait to take your place in the queue.",
+			request.Resource))
+
+	case err != nil && isTimeout(err):
+		return textResult(fmt.Sprintf(
+			"Still waiting for a slot on %q after %s — other agents are ahead of you. This is "+
+				"normal. Call lac_acquire_slot again to keep waiting, or lac_queue to see the line.",
+			request.Resource, server.options.AcquireTimeout))
+
+	case err != nil:
+		return errorResult("Could not get a slot on %q: %v", request.Resource, err)
+	}
+
+	return textResult(fmt.Sprintf(
+		"You have a slot on %q. Lease id: %s (expires %s; it is renewed for you while this session "+
+			"lives). Do the work now, then call lac_release_slot with that lease id — even if the "+
+			"work fails.",
+		lease.Resource, lease.ID, lease.ExpiresAt))
+}
+
+type leaseArguments struct {
+	LeaseID string `json:"lease_id"`
+}
+
+func handleReleaseSlot(
+	ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request leaseArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.LeaseID == "" {
+		return errorResult("Which slot? Give lease_id. lac_my_slots lists the ones you hold.")
+	}
+
+	if err := client.Release(ctx, request.LeaseID); err != nil {
+		return errorResult("Could not release %s: %v", request.LeaseID, err)
+	}
+
+	return textResult("Slot released. Whoever was next in the queue can start.")
+}
+
+func handleMySlots(ctx context.Context, _ *Server, client *lacclient.Client, _ json.RawMessage) callToolResult {
+	leases, err := client.Held(ctx)
+	if err != nil {
+		return errorResult("Could not read your slots: %v", err)
+	}
+	if len(leases) == 0 {
+		return textResult("You are not holding any slots.")
+	}
+
+	var report strings.Builder
+	report.WriteString("You are holding:\n\n")
+
+	for _, lease := range leases {
+		fmt.Fprintf(&report, "- %s on %q, expires %s\n", lease.ID, lease.Resource, lease.ExpiresAt)
+	}
+
+	report.WriteString("\nRelease each one with lac_release_slot as soon as its work is done.")
+
+	return textResult(report.String())
+}
+
+type queueArguments struct {
+	Resource string `json:"resource"`
+}
+
+func handleQueue(ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage) callToolResult {
+	var request queueArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.Resource == "" {
+		return errorResult("Which resource? Give resource, for example \"test\".")
+	}
+
+	status, err := client.Queue(ctx, request.Resource)
+	if err != nil {
+		return errorResult("Could not read the queue for %q: %v", request.Resource, err)
+	}
+
+	var report strings.Builder
+	fmt.Fprintf(&report, "%s: %d of %d slots in use, %d waiting.\n",
+		status.Resource.Name, status.Resource.Held, status.Resource.Capacity, len(status.Waiting))
+
+	for _, entry := range status.Waiting {
+		fmt.Fprintf(&report, "\n%d. %s", entry.Position, entry.AgentName)
+		if entry.Reason != "" {
+			fmt.Fprintf(&report, " — %s", entry.Reason)
+		}
+	}
+
+	return textResult(report.String())
+}
+
+type sendArguments struct {
+	To        string `json:"to"`
+	Broadcast bool   `json:"broadcast"`
+	Kind      string `json:"kind"`
+	Text      string `json:"text"`
+}
+
+func handleSendMessage(
+	ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request sendArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.Text == "" {
+		return errorResult("Nothing to send: give text.")
+	}
+	if request.Kind == "" {
+		request.Kind = "status"
+	}
+	if request.To == "" && !request.Broadcast {
+		return errorResult("Who should hear this? Give to with an agent name from lac_agents, " +
+			"or set broadcast to reach everyone.")
+	}
+
+	body := map[string]string{"text": request.Text}
+
+	var (
+		sent lacclient.Sent
+		err  error
+	)
+	if request.Broadcast {
+		sent, err = client.SendToTopic(ctx, "all", request.Kind, body)
+	} else {
+		sent, err = client.SendTo(ctx, request.To, request.Kind, body)
+	}
+
+	switch {
+	case err != nil && lacclient.ErrorCode(err) == lacclient.CodeNotFound:
+		return errorResult("Nobody is listening: %v. Use lac_agents to see who is here.", err)
+	case err != nil:
+		return errorResult("Could not send the message: %v", err)
+	}
+
+	if sent.Recipients == 1 {
+		return textResult("Sent. It is waiting for them whether or not they are looking right now.")
+	}
+
+	return textResult(fmt.Sprintf("Sent to %d agents.", sent.Recipients))
+}
+
+type inboxArguments struct {
+	KeepUnread bool `json:"keep_unread"`
+}
+
+func handleInbox(ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage) callToolResult {
+	var request inboxArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+
+	messages, err := client.Inbox(ctx, 0)
+	if err != nil {
+		return errorResult("Could not read your inbox: %v", err)
+	}
+	if len(messages) == 0 {
+		return textResult("Nothing waiting for you.")
+	}
+
+	var report strings.Builder
+	fmt.Fprintf(&report, "%d message(s):\n", len(messages))
+
+	identifiers := make([]string, 0, len(messages))
+	for _, message := range messages {
+		identifiers = append(identifiers, message.ID)
+
+		sender := message.FromName
+		if sender == "" {
+			sender = message.From
+		}
+		fmt.Fprintf(&report, "\nFrom %s (%s): %s", sender, message.Kind, textOf(message.Body))
+	}
+
+	if !request.KeepUnread {
+		if _, err := client.Acknowledge(ctx, identifiers...); err != nil {
+			report.WriteString("\n\n(These could not be marked as read, so they will appear again.)")
+		}
+	} else {
+		report.WriteString("\n\n(Left unread; they will appear again next time.)")
+	}
+
+	return textResult(report.String())
+}
+
+// textOf pulls the readable part out of a message body, falling back to the raw JSON for a message
+// that carries something more structured.
+func textOf(body json.RawMessage) string {
+	var shaped struct {
+		Text string `json:"text"`
+	}
+
+	if err := json.Unmarshal(body, &shaped); err == nil && shaped.Text != "" {
+		return shaped.Text
+	}
+
+	return string(body)
+}
+
+func decode(arguments json.RawMessage, target any) error {
+	if len(arguments) == 0 {
+		return nil
+	}
+
+	if err := json.Unmarshal(arguments, target); err != nil {
+		return fmt.Errorf("those arguments could not be read: %v", err) //nolint:errorlint // shown to a model, not wrapped
+	}
+
+	return nil
+}
+
+func isTimeout(err error) bool {
+	return strings.Contains(err.Error(), context.DeadlineExceeded.Error())
+}
+
+// object builds a JSON Schema object for a tool's arguments.
+func object(properties map[string]any, required []string) map[string]any {
+	if properties == nil {
+		properties = map[string]any{}
+	}
+
+	schema := map[string]any{"type": "object", "properties": properties}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+
+	return schema
+}
+
+func property(kind, description string) map[string]any {
+	return map[string]any{"type": kind, "description": description}
+}
+
+// identity decides how this session appears to the other agents.
+func (s *Server) identity() (name, workdir string, err error) {
+	workdir = s.options.Workdir
+	if workdir == "" {
+		if workdir, err = currentDirectory(); err != nil {
+			return "", "", err
+		}
+	}
+
+	name = s.options.AgentName
+	if name == "" {
+		name = deriveName(workdir, s.options.AgentKind)
+	}
+
+	return name, workdir, nil
+}
+
+// resourceDefinitions are the read-only views a client can fetch without calling a tool.
+func resourceDefinitions() []resource {
+	return []resource{
+		{
+			URI:         "lac://agents",
+			Name:        "agents",
+			Title:       "Agents working on this machine",
+			Description: "Who is registered right now, and where each of them is working.",
+			MIMEType:    "application/json",
+		},
+		{
+			URI:         "lac://resources",
+			Name:        "resources",
+			Title:       "Shared resources",
+			Description: "The scarce things on this machine and how busy each one is.",
+			MIMEType:    "application/json",
+		},
+	}
+}
+
+func readResource(ctx context.Context, client *lacclient.Client, uri string) (string, error) {
+	var value any
+
+	switch uri {
+	case "lac://agents":
+		agents, err := client.Agents(ctx)
+		if err != nil {
+			return "", fmt.Errorf("reading the agent roster: %w", err)
+		}
+		value = agents
+
+	case "lac://resources":
+		resources, err := client.Resources(ctx)
+		if err != nil {
+			return "", fmt.Errorf("reading the resources: %w", err)
+		}
+		value = resources
+
+	default:
+		return "", fmt.Errorf("unknown resource %q", uri)
+	}
+
+	encoded, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("encoding %s: %w", uri, err)
+	}
+
+	return string(encoded), nil
+}

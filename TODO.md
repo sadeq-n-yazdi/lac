@@ -29,14 +29,14 @@ and the discussion.
 
 ## Milestone 3 — MCP provider
 
-- [ ] `lac mcp` stdio server exposing the API as MCP tools
-- [ ] MCP resources for agent list and queue status
-- [ ] Registration instructions for Claude Code and Codex
+- [x] `lac mcp` stdio server exposing the API as MCP tools
+- [x] MCP resources for agent list and queue status
+- [x] Registration instructions for Claude Code and Codex
 
 ## Milestone 4 — Skill
 
-- [ ] `skills/lac/SKILL.md` teaching agents when and how to use LAC
-- [ ] `lac skill install` to link it into the user's skill directory
+- [x] `skills/lac/SKILL.md` teaching agents when and how to use LAC
+- [x] `lac skill install` to put it in the user's skill directory
 
 ## Milestone 5 — Reporting and Telegram
 
