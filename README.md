@@ -68,8 +68,10 @@ new front end means adding a transport, not touching business rules.
 
 ## Status
 
-Early development. See [TODO.md](TODO.md) for the milestone plan and the
-[issue tracker](https://github.com/sadeq-n-yazdi/lac/issues) for what is in flight.
+Working, and used on the machine it was written on. Every planned milestone is done: the daemon,
+the CLI, the MCP server and skill, reports, the Telegram bridge and shared workers. Nothing is
+tagged yet, so expect the odd rough edge — see [TODO.md](TODO.md) for what was built and the
+[issue tracker](https://github.com/sadeq-n-yazdi/lac/issues) for anything outstanding.
 
 ## Install
 
