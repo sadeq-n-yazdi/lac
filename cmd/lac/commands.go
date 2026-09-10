@@ -298,7 +298,9 @@ func runResources(ctx context.Context, env *environment, _ []string) error {
 	}
 
 	if len(resources) == 0 {
-		fmt.Fprintln(env.output, "no resources are defined; an operator can add one with lac-managed config")
+		fmt.Fprintln(env.output, "no resources are defined yet\n\n"+
+			"  define one now:   lac --name operator define --capacity 4 test\n"+
+			"  or permanently:   add it to ~/.config/lac/config.yaml")
 		return nil
 	}
 

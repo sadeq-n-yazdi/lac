@@ -32,6 +32,28 @@
 # One of debug, info, warn, error. Default: info
 log_level: info
 
+# The optional bridge to a Telegram bot — the only part of LAC that talks to the outside world, and
+# it talks outward only. Off unless you configure it. See docs/telegram.md.
+# telegram:
+#   enabled: true
+#   token_file: /Users/you/.config/lac/telegram.token   # mode 0600, or the daemon refuses to start
+#   allowed_chat_ids:                                   # required: without it anyone who finds the
+#     - 987654321                                       # bot could drive this machine
+#   report_deadline: 30s
+
+# What an ordinary agent is allowed to do. An agent never chooses its own capabilities.
+# capabilities:
+#   resources: ["*"]           # or a list of resource names it may queue for
+#   can_broadcast: true
+#   can_define_resources: false
+#   can_request_reports: false
+
+# Agent names that may also define resources and ask everyone for a report — your own tools, not
+# the AI sessions. Default: operator, telegram
+# operators:
+#   - operator
+#   - telegram
+
 # Resources defined at startup, so a fresh install already knows this machine's limits.
 resources:
   # The reason LAC exists: this laptop tolerates four concurrent test runs.

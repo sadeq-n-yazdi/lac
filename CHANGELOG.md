@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A Telegram bridge, off unless configured: `/agents`, `/resources`, `/queue`, `/report`, `/say` and
+  `/broadcast` from a phone, and a way for an agent to reach the operator when they are away. Gated
+  by a chat-ID allowlist that cannot be disabled; outbound long polling only, no listener.
 - Reports: `lac report` asks every agent what it is doing and collects the answers, naming anyone
   who stayed silent. Agents answer with `lac_report` over MCP or `lac answer` from a shell.
 - `docs/protocol.md`: the method-by-method JSON-RPC reference, enough to write a client in another

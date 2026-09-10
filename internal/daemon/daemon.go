@@ -19,6 +19,7 @@ import (
 	"code.sadeq.uk/lac/internal/service/reporting"
 	"code.sadeq.uk/lac/internal/store/sqlite"
 	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"code.sadeq.uk/lac/internal/transport/telegram"
 	"code.sadeq.uk/lac/internal/transport/unixsock"
 )
 
@@ -36,6 +37,8 @@ type Daemon struct {
 	messaging *messaging.Service
 	leasing   *leasing.Service
 	reporting *reporting.Service
+	notifier  *fanOutNotifier
+	telegram  *telegram.Bridge
 }
 
 // New prepares a daemon: it creates the directories, opens the database, applies migrations and
@@ -105,8 +108,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 		"database", d.configuration.DatabasePath,
 		"pid", os.Getpid())
 
-	// Housekeeping runs alongside serving and stops with it.
+	// Housekeeping and the optional Telegram bridge run alongside serving and stop with it.
 	go d.housekeeping(ctx)
+	go d.runTelegram(ctx)
 
 	err := d.server.Serve(ctx, d.listener)
 
@@ -115,6 +119,19 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.logger.Info("lac daemon stopped")
 
 	return errors.Join(err, shutdownErr)
+}
+
+// runTelegram relays to the operator's phone until the daemon stops. A bridge that cannot start —
+// a rejected token, a network that is down — must not take the daemon with it: the agents on this
+// machine still need coordinating.
+func (d *Daemon) runTelegram(ctx context.Context) {
+	if d.telegram == nil {
+		return
+	}
+
+	if err := d.telegram.Run(ctx); err != nil && ctx.Err() == nil {
+		d.logger.Error("the telegram bridge stopped", "error", err)
+	}
 }
 
 // Close releases the socket and the database. It is safe to call after Run.

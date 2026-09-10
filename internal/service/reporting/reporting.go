@@ -28,6 +28,12 @@ const MessageKind = "report-request"
 // DefaultDeadline is how long collection waits when the caller does not say.
 const DefaultDeadline = 30 * time.Second
 
+// recheckInterval is a safety net, not the mechanism: an answer normally wakes the collector at
+// once. It matters when the answer is recorded through a different path — a second daemon process,
+// or a future front end with its own service instance — where the in-process signal would not
+// reach us and only the deadline would.
+const recheckInterval = 250 * time.Millisecond
+
 // Options configure a Service.
 type Options struct {
 	// Clock defaults to the wall clock in UTC.
@@ -212,7 +218,7 @@ func (s *Service) Collect(ctx context.Context, requestID string) (core.ReportCol
 			return collection, nil
 		}
 
-		timer := time.NewTimer(remaining)
+		timer := time.NewTimer(min(remaining, recheckInterval))
 
 		select {
 		case <-arrived:

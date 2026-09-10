@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"code.sadeq.uk/lac/internal/api"
@@ -10,6 +11,7 @@ import (
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
 	"code.sadeq.uk/lac/internal/service/reporting"
+	"code.sadeq.uk/lac/internal/transport/telegram"
 )
 
 // housekeepingInterval is how often the daemon looks for abandoned leases and silent agents. It is
@@ -46,10 +48,12 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 		Logger:            d.logger,
 	})
 
-	// The messaging service pushes arrivals through the JSON-RPC server, which is how a connected
-	// agent hears about a message without asking for it.
+	// Arrivals are pushed to whichever front end can deliver them: the JSON-RPC server for a
+	// connected agent, and the Telegram bridge for the operator's phone.
+	d.notifier = newFanOutNotifier(d.server)
+
 	d.messaging = messaging.New(d.store, messaging.Options{
-		Notifier: d.server,
+		Notifier: d.notifier,
 		Logger:   d.logger,
 	})
 
@@ -58,7 +62,47 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 	api.New(d.registry, d.messaging, d.leasing, d.reporting, authenticator, api.Options{Logger: d.logger}).
 		Register(d.router)
 
+	if err := d.attachTelegram(); err != nil {
+		return err
+	}
+
 	return d.defineConfiguredResources(ctx)
+}
+
+// attachTelegram builds the optional bridge to the operator's phone. A misconfigured bridge is a
+// start-up failure rather than a silent absence: an operator who asked for it should be told why
+// they are not getting it.
+func (d *Daemon) attachTelegram() error {
+	if !d.configuration.Telegram.Enabled {
+		return nil
+	}
+
+	token, err := d.configuration.Telegram.ResolveToken()
+	if err != nil {
+		return err
+	}
+
+	bridge, err := telegram.New(telegram.Services{
+		Registry:  d.registry,
+		Messaging: d.messaging,
+		Leasing:   d.leasing,
+		Reporting: d.reporting,
+		Audit:     d.store.Audit(),
+	}, telegram.Options{
+		Token:          token,
+		AllowedChatIDs: d.configuration.Telegram.AllowedChatIDs,
+		PollTimeout:    time.Duration(d.configuration.Telegram.PollTimeout),
+		ReportDeadline: time.Duration(d.configuration.Telegram.ReportDeadline),
+		Logger:         d.logger,
+	})
+	if err != nil {
+		return fmt.Errorf("setting up the telegram bridge: %w", err)
+	}
+
+	d.telegram = bridge
+	d.notifier.add(bridge)
+
+	return nil
 }
 
 // housekeeping reclaims what crashed agents left behind, until the context ends.
