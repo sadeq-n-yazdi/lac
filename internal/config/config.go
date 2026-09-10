@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
@@ -56,6 +57,48 @@ type Config struct {
 	// Resources are defined at startup, so a fresh install already knows about the machine's
 	// limits without anyone having to run a command.
 	Resources []ResourceConfig `yaml:"resources"`
+	// Capabilities is what an ordinary agent is allowed to do. An agent never chooses its own
+	// capabilities: it says who it is, and the daemon decides what that means.
+	Capabilities CapabilitiesConfig `yaml:"capabilities"`
+	// Operators are the agent names that additionally may define resources and ask everyone for a
+	// report. These are the operator's own tools, not the AI sessions.
+	Operators []string `yaml:"operators"`
+}
+
+// CapabilitiesConfig is the policy applied to every agent that is not an operator.
+type CapabilitiesConfig struct {
+	// Resources are the resource names an agent may queue for. The single entry "*" means all of
+	// them, which is the sensible default on a machine with one user and a handful of agents.
+	Resources []string `yaml:"resources"`
+	// CanBroadcast allows sending to a topic or to every agent at once.
+	CanBroadcast bool `yaml:"can_broadcast"`
+	// CanDefineResources allows creating and reconfiguring resources. Off for ordinary agents: the
+	// machine's limits are the operator's decision, not an agent's.
+	CanDefineResources bool `yaml:"can_define_resources"`
+	// CanRequestReports allows asking every other agent to report. Off for ordinary agents.
+	CanRequestReports bool `yaml:"can_request_reports"`
+}
+
+// CapabilitiesFor returns what an agent registering under this name is allowed to do.
+//
+// Capabilities come from this policy alone. An agent that could name its own would be able to
+// grant itself the run of the machine simply by asking.
+func (c Config) CapabilitiesFor(agentName string) core.Capabilities {
+	capabilities := core.Capabilities{
+		Resources:          c.Capabilities.Resources,
+		CanBroadcast:       c.Capabilities.CanBroadcast,
+		CanDefineResources: c.Capabilities.CanDefineResources,
+		CanRequestReports:  c.Capabilities.CanRequestReports,
+	}
+
+	if slices.Contains(c.Operators, agentName) {
+		capabilities.Resources = []string{core.WildcardResource}
+		capabilities.CanBroadcast = true
+		capabilities.CanDefineResources = true
+		capabilities.CanRequestReports = true
+	}
+
+	return capabilities
 }
 
 // ResourceConfig is a resource declared in the configuration file.
@@ -120,6 +163,11 @@ func defaults(paths Paths) Config {
 		DefaultLeaseTimeToLive: Duration(DefaultLeaseTimeToLive),
 		ShutdownGrace:          Duration(DefaultShutdownGrace),
 		LogLevel:               "info",
+		Capabilities: CapabilitiesConfig{
+			Resources:    []string{core.WildcardResource},
+			CanBroadcast: true,
+		},
+		Operators: []string{"operator"},
 	}
 }
 
@@ -189,6 +237,21 @@ func (c Config) Validate() error {
 	} {
 		if field.value <= 0 {
 			return fmt.Errorf("%w: %s must be positive, got %s", ErrInvalidConfig, field.name, field.value)
+		}
+	}
+
+	for _, name := range c.Operators {
+		if err := core.ValidateName("operator name", name); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
+	}
+
+	for _, resource := range c.Capabilities.Resources {
+		if resource == core.WildcardResource {
+			continue
+		}
+		if err := core.ValidateName("capabilities resource", resource); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 		}
 	}
 

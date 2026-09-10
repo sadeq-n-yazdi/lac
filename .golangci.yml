@@ -45,6 +45,10 @@ linters:
           # Domain types are passed by value on purpose: they are immutable snapshots, and a
           # pointer would invite a caller to mutate a record another goroutine is reading.
           sizeThreshold: 256
+        rangeValCopy:
+          # Same reasoning, and these ranges are over a handful of agents or leases, never a
+          # hot loop.
+          sizeThreshold: 256
     govet:
       enable-all: true
       disable:
