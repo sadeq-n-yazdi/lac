@@ -71,11 +71,13 @@ linters:
       - comments
       - std-error-handling
     rules:
-      # Tests may repeat themselves and take shortcuts that production code may not.
+      # Tests may repeat themselves and take shortcuts that production code may not: a test
+      # connection is short-lived and bounded by the test's own deadline.
       - path: _test\.go$
         linters:
           - dupl
           - gosec
+          - noctx
           - unparam
 
 formatters:
