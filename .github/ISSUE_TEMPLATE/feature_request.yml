@@ -1,0 +1,60 @@
+name: Feature request
+description: Suggest a capability LAC should gain.
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        LAC has a deliberately narrow scope: it lets local AI agents talk, queue for scarce local resources, and
+        report to their operator. Requests that stay inside that scope are much more likely to be accepted.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you unable to do today? Describe the situation, not the solution.
+      placeholder: When two agents both want the database fixture, one silently clobbers the other's data.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should LAC do instead? Sketch the command, API call or behaviour you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you try, and why was it not enough?
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of LAC does this touch
+      multiple: true
+      options:
+        - Messaging
+        - Resources and leases
+        - Reporting
+        - CLI
+        - MCP server
+        - Telegram bridge
+        - Storage
+        - Documentation
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: This keeps all coordination on the local machine, or explains why it cannot.
+          required: true

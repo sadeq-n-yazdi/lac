@@ -1,0 +1,83 @@
+name: Bug report
+description: Something in LAC does not behave the way it should.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Please redact any agent tokens or Telegram bot tokens
+        from logs before pasting them. If this is a security vulnerability, close this form and use
+        [private reporting](https://github.com/sadeq-n-yazdi/lac/security/advisories/new) instead.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: A clear description of the problem and what you expected instead.
+      placeholder: |
+        I ran `lac run --resource test -- make test` from six shells and seven ran at once.
+        I expected at most four.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence of commands that shows the problem.
+      value: |
+        1.
+        2.
+        3.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - lacd (daemon)
+        - lac (CLI)
+        - MCP server
+        - Telegram bridge
+        - Storage / migrations
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: LAC version
+      description: Output of `lac version`, or the commit SHA if you built from source.
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Operating system, version and architecture.
+      placeholder: macOS 15.6 arm64
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Daemon output or CLI errors. Tokens redacted, please.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: I removed every token and secret from the details above.
+          required: true

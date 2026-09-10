@@ -1,0 +1,39 @@
+name: Task
+description: A planned unit of work from the roadmap.
+title: "task: "
+labels: ["task"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this task delivers, in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Packages, files and behaviour this task touches — and what it deliberately leaves alone.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable statements that decide when this is done.
+      value: |
+        - [ ]
+        - [ ]
+        - [ ] `make lint test` passes
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Issues that must land first, or that this one unblocks.
+      placeholder: Blocked by #3. Unblocks #7.
