@@ -29,6 +29,11 @@ func commands() []command {
 		{name: "release", summary: "give a slot back", run: runRelease},
 		{name: "held", summary: "the slots you are holding", run: runHeld},
 		{name: "run", summary: "wait for a slot, then run a command", run: runRun},
+		{name: "ask", summary: "ask a shared worker to run something for you", run: runAsk},
+		{name: "commands", summary: "what a shared worker can be asked to do", run: runCommands},
+		{name: "task", summary: "show one task, optionally waiting for it", run: runTaskStatus},
+		{name: "tasks", summary: "the work you have asked for", run: runTasks},
+		{name: "worker", summary: "become a shared worker for a resource", run: runWorker},
 		{name: "mcp", summary: "serve LAC over MCP on stdin and stdout, for AI tools", run: runMCP},
 		{name: "skill", summary: "install the LAC skill for AI tools that read skills", run: runSkill},
 		{name: "report", summary: "ask every agent what it is doing", run: runReport},
@@ -595,6 +600,188 @@ func runAnswer(ctx context.Context, env *environment, arguments []string) error 
 	}
 
 	fmt.Fprintf(env.output, "answered\t%s\n", arguments[0])
+
+	return nil
+}
+
+// runAsk hands a piece of work to a shared worker. It is the other half of `lac run`: instead of
+// waiting for a slot and doing the work yourself, you ask the machine's worker to do it.
+func runAsk(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("ask", flag.ContinueOnError)
+	var (
+		workdir    = flags.String("workdir", "", "where to do the work (default: your own directory)")
+		background = flags.Bool("background", false, "return as soon as it is queued")
+		timeout    = flags.Duration("timeout", 0, "give up waiting after this long; the work carries on")
+	)
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+	if flags.NArg() < 1 {
+		return errors.New("usage: lac ask [flags] <command>   (lac commands lists what you can ask for)")
+	}
+
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	task, err := client.SubmitTask(ctx, flags.Arg(0), *workdir, !*background, *timeout)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, task)
+	}
+
+	if !task.Finished() {
+		fmt.Fprintf(env.output, "queued\t%s (%s)\n", task.ID, task.Command)
+		fmt.Fprintf(env.output, "\tfollow it with: lac task %s --wait\n", task.ID)
+
+		return nil
+	}
+
+	return reportTask(env, task)
+}
+
+// reportTask prints a finished task and returns its exit status as this command's own, so `lac ask`
+// can stand in for running the thing yourself.
+func reportTask(env *environment, task lacclient.Task) error {
+	if task.Output != "" {
+		if err := env.output.Flush(); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
+		fmt.Fprint(os.Stdout, task.Output)
+		if !strings.HasSuffix(task.Output, "\n") {
+			fmt.Fprintln(os.Stdout)
+		}
+	}
+
+	worker := task.Worker
+	if worker == "" {
+		worker = "nobody"
+	}
+
+	fmt.Fprintf(env.output, "%s\t%s, run by %s\n", task.State, task.Command, worker)
+	if task.Failure != "" {
+		fmt.Fprintf(env.output, "\t%s\n", task.Failure)
+	}
+
+	if task.ExitCode != 0 {
+		if err := env.output.Flush(); err != nil {
+			return fmt.Errorf("writing output: %w", err)
+		}
+
+		return exitCode{code: task.ExitCode}
+	}
+
+	return nil
+}
+
+// runTasks lists the work this agent has asked for.
+func runTasks(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("tasks", flag.ContinueOnError)
+	limit := flags.Int("limit", 0, "how many to show")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	tasks, err := client.Tasks(ctx, *limit)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, tasks)
+	}
+
+	if len(tasks) == 0 {
+		fmt.Fprintln(env.output, "you have not asked for any work")
+		return nil
+	}
+
+	fmt.Fprintln(env.output, "TASK\tCOMMAND\tSTATE\tWORKER\tSUBMITTED")
+	for _, task := range tasks {
+		fmt.Fprintf(env.output, "%s\t%s\t%s\t%s\t%s\n",
+			task.ID, task.Command, task.State, task.Worker, shortTime(task.SubmittedAt))
+	}
+
+	return nil
+}
+
+// runTaskStatus shows one task, optionally waiting for it to finish.
+func runTaskStatus(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("task", flag.ContinueOnError)
+	wait := flags.Bool("wait", false, "wait until it finishes")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+	if flags.NArg() < 1 {
+		return errors.New("usage: lac task [--wait] <task-id>")
+	}
+
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	task, err := client.TaskStatus(ctx, flags.Arg(0), *wait)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, task)
+	}
+	if !task.Finished() {
+		fmt.Fprintf(env.output, "%s\t%s (%s)\n", task.State, task.Command, task.ID)
+		if task.Output != "" {
+			fmt.Fprintf(env.output, "\nso far:\n%s\n", task.Output)
+		}
+
+		return nil
+	}
+
+	return reportTask(env, task)
+}
+
+// runCommands lists what a shared worker on this machine can be asked to do.
+func runCommands(ctx context.Context, env *environment, _ []string) error {
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	commands, err := client.Commands(ctx)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, commands)
+	}
+
+	if len(commands) == 0 {
+		fmt.Fprintln(env.output, "no commands are configured\n\n"+
+			"  an operator adds them under `commands:` in ~/.config/lac/config.yaml")
+
+		return nil
+	}
+
+	fmt.Fprintln(env.output, "COMMAND\tRESOURCE\tRUNS\tDESCRIPTION")
+	for _, command := range commands {
+		fmt.Fprintf(env.output, "%s\t%s\t%s\t%s\n",
+			command.Key, command.Resource, strings.Join(command.Run, " "), command.Description)
+	}
 
 	return nil
 }

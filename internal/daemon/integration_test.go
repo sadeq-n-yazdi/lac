@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -26,6 +28,15 @@ type live struct {
 func startDaemon(t *testing.T, resources []config.ResourceConfig) *live {
 	t.Helper()
 
+	return startDaemonWithCommands(t, resources, nil)
+}
+
+// startDaemonWithCommands is the same, with the operator's configured worker commands.
+func startDaemonWithCommands(
+	t *testing.T, resources []config.ResourceConfig, commands map[string]config.CommandConfig,
+) *live {
+	t.Helper()
+
 	home, err := os.MkdirTemp("", "lac")
 	if err != nil {
 		t.Fatalf("creating a temporary home: %v", err)
@@ -42,8 +53,27 @@ func startDaemon(t *testing.T, resources []config.ResourceConfig) *live {
 		t.Fatalf("Load() = %v, want nil", err)
 	}
 	configuration.Resources = resources
+	configuration.WorkerCommands = commands
 	// The agents in these tests work in the temporary home rather than the developer's own.
 	configuration.AllowedWorkdirRoots = []string{home, os.TempDir(), "/tmp"}
+
+	// A command needs a resource to run on, so the tests that configure one get it defined.
+	for key, command := range commands {
+		if command.Resource == "" {
+			t.Fatalf("the test command %q has no resource", key)
+		}
+
+		known := false
+		for _, resource := range configuration.Resources {
+			if resource.Name == command.Resource {
+				known = true
+			}
+		}
+		if !known {
+			configuration.Resources = append(configuration.Resources,
+				config.ResourceConfig{Name: command.Resource, Capacity: 1})
+		}
+	}
 
 	instance, err := daemon.New(t.Context(), configuration, quietLogger())
 	if err != nil {
@@ -523,4 +553,120 @@ func waitForReportRequest(t *testing.T, client *lacclient.Client) string {
 	t.Fatal("no report request ever arrived")
 
 	return ""
+}
+
+// Dispatch, end to end: one agent asks for work it cannot describe, a worker runs the command the
+// operator configured, and the result comes back — all inside the same capacity limit as everything
+// else.
+func TestAWorkerRunsWorkForAnotherAgent(t *testing.T) {
+	subject := startDaemonWithCommands(t,
+		[]config.ResourceConfig{{Name: "test", Capacity: 1}},
+		map[string]config.CommandConfig{
+			"greet": {Resource: "test", Run: []string{"echo", "hello from the worker"}},
+		})
+
+	requester := subject.connect(t, "claude-a")
+	worker := subject.connect(t, "test-runner")
+
+	// What the machine offers, as an agent sees it.
+	commands, err := requester.Commands(t.Context())
+	if err != nil {
+		t.Fatalf("Commands() = %v, want nil", err)
+	}
+	if len(commands) != 1 || commands[0].Key != "greet" {
+		t.Fatalf("Commands() = %+v, want the one configured command", commands)
+	}
+
+	submitted := make(chan lacclient.Task, 1)
+	go func() {
+		task, err := requester.SubmitTask(t.Context(), "greet", "", true, 30*time.Second)
+		if err != nil {
+			t.Errorf("SubmitTask() = %v, want nil", err)
+			return
+		}
+		submitted <- task
+	}()
+
+	// The worker: take a slot, claim the work, run what the daemon says, report it.
+	runWorkerOnce(t, worker, "test")
+
+	select {
+	case task := <-submitted:
+		if task.State != "succeeded" {
+			t.Fatalf("task = %+v, want it to have succeeded", task)
+		}
+		if !strings.Contains(task.Output, "hello from the worker") {
+			t.Errorf("output = %q, want what the command printed", task.Output)
+		}
+		if task.Worker != "test-runner" {
+			t.Errorf("worker = %q, want test-runner", task.Worker)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the requester never got its result")
+	}
+}
+
+// A requester cannot say what runs — only which configured command to run.
+func TestARequesterCannotNameACommandLine(t *testing.T) {
+	subject := startDaemonWithCommands(t, nil, map[string]config.CommandConfig{
+		"greet": {Resource: "test", Run: []string{"echo", "hello"}},
+	})
+
+	requester := subject.connect(t, "claude-a")
+
+	for _, attempt := range []string{"rm -rf /", "/bin/sh", "echo hello", "unknown"} {
+		if _, err := requester.SubmitTask(t.Context(), attempt, "", false, 0); err == nil {
+			t.Errorf("SubmitTask(%q) succeeded; only configured commands may run", attempt)
+		}
+	}
+}
+
+// runWorkerOnce plays the part of `lac worker --resource <name>`: hold a slot, claim work, run the
+// command the daemon supplies, report the outcome.
+func runWorkerOnce(t *testing.T, client *lacclient.Client, resource string) {
+	t.Helper()
+
+	lease, err := client.Acquire(t.Context(), lacclient.AcquireRequest{Resource: resource})
+	if err != nil {
+		t.Fatalf("Acquire() = %v, want nil", err)
+	}
+	defer func() {
+		if err := client.Release(t.Context(), lease.ID); err != nil {
+			t.Errorf("Release() = %v, want nil", err)
+		}
+	}()
+
+	claimed, err := client.ClaimTask(t.Context(), resource, lease.ID)
+	if err != nil {
+		t.Fatalf("ClaimTask() = %v, want nil", err)
+	}
+	if len(claimed.Run) == 0 {
+		t.Fatal("the daemon supplied no command to run")
+	}
+
+	command := exec.CommandContext(t.Context(), claimed.Run[0], claimed.Run[1:]...)
+	command.Dir = claimed.Task.Workdir
+
+	output, runErr := command.CombinedOutput()
+
+	if len(output) > 0 {
+		if err := client.AppendTaskOutput(t.Context(), claimed.Task.ID, string(output)); err != nil {
+			t.Errorf("AppendTaskOutput() = %v, want nil", err)
+		}
+	}
+
+	exitCode := 0
+	failure := ""
+
+	var exited *exec.ExitError
+	switch {
+	case errors.As(runErr, &exited):
+		exitCode = exited.ExitCode()
+	case runErr != nil:
+		exitCode, failure = -1, runErr.Error()
+	}
+
+	if _, err := client.CompleteTask(t.Context(), claimed.Task.ID, exitCode, failure); err != nil {
+		t.Fatalf("CompleteTask() = %v, want nil", err)
+	}
 }

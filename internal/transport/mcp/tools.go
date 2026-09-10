@@ -101,6 +101,38 @@ func toolDefinitions() []tool {
 			}, []string{"kind", "text"}),
 		},
 		{
+			Name:  "lac_ask_worker",
+			Title: "Ask a shared worker to run something for you",
+			Description: "Hand a job to the machine's shared worker instead of running it yourself. " +
+				"Use it when you want the work done but do not need to watch it: the worker queues " +
+				"for its own slot, runs the job in your working directory, and gives you the output " +
+				"and exit status. Call lac_worker_commands first to see what can be asked for — you " +
+				"name a configured job, you cannot supply a command line.",
+			InputSchema: object(map[string]any{
+				"command": property("string",
+					"The job to ask for, from lac_worker_commands. For example \"test\"."),
+				"wait": property("boolean",
+					"Wait for the result. True by default. Set false to get a task id back at once and follow it with lac_task."),
+			}, []string{"command"}),
+		},
+		{
+			Name:  "lac_worker_commands",
+			Title: "What a shared worker can be asked to do",
+			Description: "List the jobs this machine's workers will run, with what each one actually " +
+				"executes. The operator decides these; you can only name one.",
+			InputSchema: object(nil, nil),
+		},
+		{
+			Name:  "lac_task",
+			Title: "Follow a job you asked for",
+			Description: "Show the state and output of a job you handed to a worker, optionally " +
+				"waiting for it to finish.",
+			InputSchema: object(map[string]any{
+				"task_id": property("string", "The task id lac_ask_worker gave you."),
+				"wait":    property("boolean", "Wait until it finishes rather than reporting where it has got to."),
+			}, []string{"task_id"}),
+		},
+		{
 			Name:  "lac_report",
 			Title: "Answer the operator's report request",
 			Description: "Answer a request from the operator asking what you are working on. You " +
@@ -130,15 +162,18 @@ func toolDefinitions() []tool {
 
 func toolHandlers() map[string]toolHandler {
 	return map[string]toolHandler{
-		"lac_agents":       handleAgents,
-		"lac_resources":    handleResources,
-		"lac_acquire_slot": handleAcquireSlot,
-		"lac_release_slot": handleReleaseSlot,
-		"lac_my_slots":     handleMySlots,
-		"lac_queue":        handleQueue,
-		"lac_send_message": handleSendMessage,
-		"lac_inbox":        handleInbox,
-		"lac_report":       handleReport,
+		"lac_agents":          handleAgents,
+		"lac_resources":       handleResources,
+		"lac_acquire_slot":    handleAcquireSlot,
+		"lac_release_slot":    handleReleaseSlot,
+		"lac_my_slots":        handleMySlots,
+		"lac_queue":           handleQueue,
+		"lac_send_message":    handleSendMessage,
+		"lac_inbox":           handleInbox,
+		"lac_report":          handleReport,
+		"lac_ask_worker":      handleAskWorker,
+		"lac_worker_commands": handleWorkerCommands,
+		"lac_task":            handleTask,
 	}
 }
 
@@ -374,6 +409,112 @@ func handleSendMessage(
 	}
 
 	return textResult(fmt.Sprintf("Sent to %d agents.", sent.Recipients))
+}
+
+type askArguments struct {
+	Command string `json:"command"`
+	Wait    *bool  `json:"wait"`
+}
+
+func handleAskWorker(
+	ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request askArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.Command == "" {
+		return errorResult("Which job? Give command. lac_worker_commands lists what can be asked for.")
+	}
+
+	wait := request.Wait == nil || *request.Wait
+
+	task, err := client.SubmitTask(ctx, request.Command, "", wait, 0)
+	switch {
+	case err != nil && lacclient.ErrorCode(err) == lacclient.CodeNotFound:
+		return errorResult("%v. Call lac_worker_commands to see what this machine offers; you name a "+
+			"configured job rather than a command line.", err)
+	case err != nil:
+		return errorResult("Could not ask for %q: %v", request.Command, err)
+	}
+
+	if !task.Finished() {
+		return textResult(fmt.Sprintf(
+			"Queued as %s. Nobody may have picked it up yet — a worker has to be running for this "+
+				"resource. Follow it with lac_task(task_id: %q).", task.ID, task.ID))
+	}
+
+	return textResult(describeTask(task))
+}
+
+func describeTask(task lacclient.Task) string {
+	var report strings.Builder
+
+	fmt.Fprintf(&report, "%s: %s", task.Command, task.State)
+	if task.Worker != "" {
+		fmt.Fprintf(&report, ", run by %s", task.Worker)
+	}
+	if task.State == "failed" {
+		fmt.Fprintf(&report, " (exit status %d)", task.ExitCode)
+	}
+	if task.Failure != "" {
+		fmt.Fprintf(&report, "\n%s", task.Failure)
+	}
+	if task.Output != "" {
+		fmt.Fprintf(&report, "\n\n%s", task.Output)
+	}
+
+	return report.String()
+}
+
+func handleWorkerCommands(
+	ctx context.Context, _ *Server, client *lacclient.Client, _ json.RawMessage,
+) callToolResult {
+	commands, err := client.Commands(ctx)
+	if err != nil {
+		return errorResult("Could not read the commands: %v", err)
+	}
+	if len(commands) == 0 {
+		return textResult("No jobs are configured for workers on this machine, so there is nothing " +
+			"to hand off. Do the work yourself, taking a slot with lac_acquire_slot first.")
+	}
+
+	var report strings.Builder
+	report.WriteString("Jobs a shared worker will run for you:\n")
+
+	for _, command := range commands {
+		fmt.Fprintf(&report, "\n- %s: runs `%s` on the %q resource",
+			command.Key, strings.Join(command.Run, " "), command.Resource)
+		if command.Description != "" {
+			fmt.Fprintf(&report, " — %s", command.Description)
+		}
+	}
+
+	report.WriteString("\n\nAsk for one with lac_ask_worker. It runs in your working directory.")
+
+	return textResult(report.String())
+}
+
+type taskArguments struct {
+	TaskID string `json:"task_id"`
+	Wait   bool   `json:"wait"`
+}
+
+func handleTask(ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage) callToolResult {
+	var request taskArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.TaskID == "" {
+		return errorResult("Which job? Give task_id, the one lac_ask_worker gave you.")
+	}
+
+	task, err := client.TaskStatus(ctx, request.TaskID, request.Wait)
+	if err != nil {
+		return errorResult("Could not read %s: %v", request.TaskID, err)
+	}
+
+	return textResult(describeTask(task))
 }
 
 type reportArguments struct {

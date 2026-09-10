@@ -7,6 +7,7 @@ import (
 
 	"code.sadeq.uk/lac/internal/api"
 	"code.sadeq.uk/lac/internal/auth"
+	"code.sadeq.uk/lac/internal/service/dispatch"
 	"code.sadeq.uk/lac/internal/service/leasing"
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
@@ -59,8 +60,15 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 
 	d.reporting = reporting.New(d.store, d.registry, d.messaging, reporting.Options{Logger: d.logger})
 
-	api.New(d.registry, d.messaging, d.leasing, d.reporting, authenticator, api.Options{Logger: d.logger}).
-		Register(d.router)
+	d.dispatch = dispatch.New(d.store, catalogue{configuration: d.configuration}, dispatch.Options{
+		WorkdirRoots: workdirRoots,
+		Logger:       d.logger,
+	})
+
+	api.New(d.registry, d.messaging, d.leasing, d.reporting, d.dispatch, authenticator, api.Options{
+		Logger:   d.logger,
+		Notifier: d.notifier,
+	}).Register(d.router)
 
 	if err := d.attachTelegram(); err != nil {
 		return err
@@ -147,6 +155,15 @@ func (d *Daemon) runHousekeeping(ctx context.Context) {
 		if released > 0 {
 			d.logger.Info("reclaimed what a stale agent held",
 				"agent", agent.Name, "leases", released)
+		}
+
+		// A worker that went away mid-task leaves work that still needs doing.
+		if requeued, err := d.dispatch.ReleaseAbandoned(ctx, agent.ID); err != nil {
+			d.logger.Error("could not requeue an absent worker's tasks",
+				"agent", agent.Name, "error", err)
+		} else if requeued > 0 {
+			d.logger.Info("requeued an absent worker's tasks",
+				"agent", agent.Name, "tasks", requeued)
 		}
 	}
 

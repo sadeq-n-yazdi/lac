@@ -75,6 +75,9 @@ read it, and `lac skill path` to see where it would go.
 | `lac_send_message` | Tell another agent — or everyone — something                    |
 | `lac_inbox`        | Read what was sent to this session                              |
 | `lac_report`       | Answer the operator's "what is everyone working on?"            |
+| `lac_worker_commands` | What a shared worker on this machine will run for you        |
+| `lac_ask_worker`   | Hand a job to a shared worker instead of running it yourself    |
+| `lac_task`         | Follow a job you handed off                                     |
 
 Two read-only resources are exposed as well: `lac://agents` and `lac://resources`, for a client that
 would rather fetch state than spend a tool call.

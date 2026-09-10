@@ -160,6 +160,31 @@ addressed to somebody else changes nothing, and `acknowledged` tells you how man
   `lease.renew` on a slot you have lost returns `-32003`, which means stop working.
 - Release is idempotent, so a retry after a dropped connection is safe.
 
+### Dispatched work
+
+| Method           | Parameters                                     | Returns              |
+|------------------|------------------------------------------------|----------------------|
+| `task.commands`  | —                                              | `{commands[]}`       |
+| `task.submit`    | `command`, `workdir`, `wait`, `timeout`        | `{task}`             |
+| `task.claim`     | `resource`, `lease_id`                         | `{task, run[], time_limit}` |
+| `task.output`    | `task_id`, `chunk`                             | `{recorded}`         |
+| `task.complete`  | `task_id`, `exit_code`, `failure`              | `{task}`             |
+| `task.status`    | `task_id`, `wait`                              | `{task}`             |
+| `task.cancel`    | `task_id`                                      | `{task}`             |
+| `task.list`      | `limit`                                        | `{tasks[]}`          |
+
+`command` is a **key**, never a command line: what the key runs comes from the daemon's
+configuration. There is no parameter anywhere in this API that lets a requester say what to
+execute, which is what makes dispatch safe to have at all. An empty `workdir` means the
+requester's own, and any other is checked against the allowed roots.
+
+`task.claim` blocks until there is work, and requires a `lease_id` the caller already holds on that
+resource — dispatched work counts against the same capacity as everything else. The reply carries
+`run`, the command from the configuration, which is the only place the worker gets it from.
+
+A worker reports progress with `task.output`; the daemon pushes each chunk to the requester as a
+`task.output` notification, so a waiting requester sees the run rather than silence.
+
 ### Reports
 
 | Method           | Parameters                            | Returns            |

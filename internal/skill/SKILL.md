@@ -86,7 +86,21 @@ changing something you were about to change, believe them and pick something els
 Use `broadcast: true` sparingly — it interrupts every agent on the machine. It is right for "I am
 about to rebase main" and wrong for "I finished a function".
 
-## 3. Answer the operator when they ask
+## 3. Or hand the work to a shared worker
+
+If the machine has a worker running, you can give it the job instead of doing it yourself:
+
+```
+lac_worker_commands              # what can be asked for
+lac_ask_worker(command: "test")  # hand it over and get the result back
+```
+
+The worker queues for its own slot, runs the job in *your* working directory, and returns the
+output and exit status. Use it when you want the work done but do not need to watch it happen. You
+name a configured job; you cannot supply a command line, so if what you need is not listed, do it
+yourself with a slot.
+
+## 4. Answer the operator when they ask
 
 The operator can ask every agent at once what it is working on. The question arrives in your inbox
 as a message of kind `report-request`, carrying a `request_id`. Answer it promptly:
@@ -101,7 +115,7 @@ may be stuck".
 
 From a shell: `lac answer <request-id> "what you are doing"`.
 
-## 4. Report to the user
+## 5. Report to the user
 
 When the user asks what everyone is doing, or why something is waiting:
 

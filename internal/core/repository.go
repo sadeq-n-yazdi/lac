@@ -17,6 +17,7 @@ type Store interface {
 	Resources() ResourceRepository
 	Leases() LeaseRepository
 	Reports() ReportRepository
+	Tasks() TaskRepository
 	Audit() AuditLog
 
 	// InTransaction runs fn against a Store bound to a single write transaction. The transaction
@@ -137,6 +138,29 @@ type LeaseRepository interface {
 	Release(ctx context.Context, leaseID string, at time.Time) error
 	// ExpiredLeases returns leases that passed their expiry without being released or renewed.
 	ExpiredLeases(ctx context.Context, at time.Time) ([]Lease, error)
+}
+
+// TaskRepository stores dispatched work.
+type TaskRepository interface {
+	// Create stores a queued task.
+	Create(ctx context.Context, task Task) error
+	// ByID returns one task, or ErrNotFound.
+	ByID(ctx context.Context, taskID string) (Task, error)
+	// NextQueued returns the oldest queued task for a resource, or ErrNotFound if there is none.
+	NextQueued(ctx context.Context, resourceName string) (Task, error)
+	// Claim marks a task as running for a worker holding a lease. It only succeeds while the task
+	// is still queued, so two workers racing for the same task cannot both get it.
+	Claim(ctx context.Context, taskID, workerID, leaseID string, at time.Time) error
+	// AppendOutput adds to a running task's output, so a waiting requester sees progress rather
+	// than silence.
+	AppendOutput(ctx context.Context, taskID, chunk string) error
+	// Finish records the outcome of a task.
+	Finish(ctx context.Context, taskID string, state TaskState, exitCode int, failure string, at time.Time) error
+	// ListByRequester returns a requester's recent tasks, newest first.
+	ListByRequester(ctx context.Context, requesterID string, limit int) ([]Task, error)
+	// ReleaseAbandoned moves a worker's running tasks back to the queue, for when that worker went
+	// away without finishing them. It returns the tasks it requeued.
+	ReleaseAbandoned(ctx context.Context, workerID string, at time.Time) ([]Task, error)
 }
 
 // ReportRepository stores report requests and the answers to them.
