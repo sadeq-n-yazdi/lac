@@ -58,7 +58,11 @@ order.
 ```
 
 Dependencies point inward: `internal/core` (domain) ← `internal/service` (use cases) ← transports and storage. Adding a
-new front end means adding a transport, not touching business rules. See [docs/architecture.md](docs/architecture.md).
+new front end means adding a transport, not touching business rules.
+
+- [docs/architecture.md](docs/architecture.md) — how the parts fit together, and why
+- [docs/protocol.md](docs/protocol.md) — the JSON-RPC surface, for writing a client
+- [docs/mcp.md](docs/mcp.md) — using LAC from Claude Code, Codex or another MCP client
 
 ## Status
 

@@ -50,3 +50,9 @@ and the discussion.
 - [ ] `task.submit`, `task.claim`, `task.complete`
 - [ ] Worker mode: claim queued tasks under a lease and execute a configured command
 - [ ] Stream results back to the requester
+
+## Documentation
+
+- [x] Architecture overview (`docs/architecture.md`)
+- [x] Protocol reference (`docs/protocol.md`)
+- [x] MCP and skill setup (`docs/mcp.md`)
