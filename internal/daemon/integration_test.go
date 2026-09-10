@@ -432,3 +432,95 @@ func waitForQueue(t *testing.T, client *lacclient.Client, resource string, want 
 
 	t.Fatalf("the queue for %q never reached %d waiting", resource, want)
 }
+
+// The operator's question — "what is everybody doing?" — end to end: it reaches the agents as a
+// message, they answer, and the answers come back together with anyone who stayed quiet.
+func TestTheOperatorCanAskEveryoneForAReport(t *testing.T) {
+	subject := startDaemon(t, nil)
+
+	operator := subject.connect(t, "operator")
+	working := subject.connect(t, "claude-a")
+	quiet := subject.connect(t, "claude-b")
+	_ = quiet
+
+	collected := make(chan lacclient.ReportCollection, 1)
+	go func() {
+		collection, err := operator.RequestReports(t.Context(), "what are you working on?", 10*time.Second, true)
+		if err != nil {
+			t.Errorf("RequestReports() = %v, want nil", err)
+			return
+		}
+		collected <- collection
+	}()
+
+	// The agent finds the question in its inbox and answers it, which is exactly what an agent
+	// driven through MCP does.
+	requestID := waitForReportRequest(t, working)
+	if err := working.SubmitReport(t.Context(), requestID, "rewriting the parser tests"); err != nil {
+		t.Fatalf("SubmitReport() = %v, want nil", err)
+	}
+
+	select {
+	case collection := <-collected:
+		if len(collection.Reports) != 1 {
+			t.Fatalf("collected %d reports, want 1", len(collection.Reports))
+		}
+		if collection.Reports[0].AgentName != "claude-a" {
+			t.Errorf("the report is attributed to %q, want claude-a", collection.Reports[0].AgentName)
+		}
+		if collection.Reports[0].Body != "rewriting the parser tests" {
+			t.Errorf("body = %q, want what the agent said", collection.Reports[0].Body)
+		}
+		if len(collection.Silent) != 1 || collection.Silent[0] != "claude-b" {
+			t.Errorf("silent = %v, want the agent that never answered, by name", collection.Silent)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the report was never collected")
+	}
+}
+
+// Asking everyone to stop and report is an operator's power. An ordinary agent must not have it.
+func TestOnlyOperatorsMayAskForReports(t *testing.T) {
+	subject := startDaemon(t, nil)
+	ordinary := subject.connect(t, "claude-a")
+
+	_, err := ordinary.RequestReports(t.Context(), "what are you doing?", time.Second, false)
+	if lacclient.ErrorCode(err) != lacclient.CodeUnauthorised {
+		t.Errorf("RequestReports() by an ordinary agent = %v, want CodeUnauthorised", err)
+	}
+}
+
+// waitForReportRequest reads the agent's inbox until the operator's question turns up, and returns
+// the request id it must answer with.
+func waitForReportRequest(t *testing.T, client *lacclient.Client) string {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		messages, err := client.Inbox(t.Context(), 0)
+		if err != nil {
+			t.Fatalf("Inbox() = %v, want nil", err)
+		}
+
+		for _, message := range messages {
+			if message.Kind != "report-request" {
+				continue
+			}
+
+			var body struct {
+				RequestID string `json:"request_id"`
+			}
+			if err := json.Unmarshal(message.Body, &body); err != nil {
+				t.Fatalf("decoding the report request: %v", err)
+			}
+
+			return body.RequestID
+		}
+
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("no report request ever arrived")
+
+	return ""
+}

@@ -16,6 +16,7 @@ import (
 	"code.sadeq.uk/lac/internal/service/leasing"
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
+	"code.sadeq.uk/lac/internal/service/reporting"
 	"code.sadeq.uk/lac/internal/store/sqlite"
 	"code.sadeq.uk/lac/internal/transport/jsonrpc"
 	"code.sadeq.uk/lac/internal/transport/unixsock"
@@ -34,6 +35,7 @@ type Daemon struct {
 	registry  *registry.Service
 	messaging *messaging.Service
 	leasing   *leasing.Service
+	reporting *reporting.Service
 }
 
 // New prepares a daemon: it creates the directories, opens the database, applies migrations and

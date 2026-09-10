@@ -31,6 +31,8 @@ func commands() []command {
 		{name: "run", summary: "wait for a slot, then run a command", run: runRun},
 		{name: "mcp", summary: "serve LAC over MCP on stdin and stdout, for AI tools", run: runMCP},
 		{name: "skill", summary: "install the LAC skill for AI tools that read skills", run: runSkill},
+		{name: "report", summary: "ask every agent what it is doing", run: runReport},
+		{name: "answer", summary: "answer a report request", run: runAnswer},
 		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},
 	}
 }
@@ -48,11 +50,11 @@ func runVersion(_ context.Context, env *environment, _ []string) error {
 }
 
 func runInfo(ctx context.Context, env *environment, _ []string) error {
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	info, err := client.Info(ctx)
 	if err != nil {
@@ -133,11 +135,11 @@ func runAgents(ctx context.Context, env *environment, arguments []string) error 
 		return err //nolint:wrapcheck // the flag package already printed the problem
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	var states []string
 	if *all {
@@ -189,11 +191,11 @@ func runSend(ctx context.Context, env *environment, arguments []string) error {
 		recipient, kind, body = positional[0], positional[1], strings.Join(positional[2:], " ")
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	payload := bodyOf(body)
 
@@ -236,11 +238,11 @@ func runInbox(ctx context.Context, env *environment, arguments []string) error {
 		return err //nolint:wrapcheck // the flag package already printed the problem
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	messages, err := client.Inbox(ctx, *limit)
 	if err != nil {
@@ -280,11 +282,11 @@ func runInbox(ctx context.Context, env *environment, arguments []string) error {
 }
 
 func runResources(ctx context.Context, env *environment, _ []string) error {
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	resources, err := client.Resources(ctx)
 	if err != nil {
@@ -326,11 +328,11 @@ func runDefine(ctx context.Context, env *environment, arguments []string) error 
 		return errors.New("usage: lac define --capacity <n> [flags] <resource>")
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	resource, err := client.DefineResource(ctx, flags.Arg(0), *capacity, *timeToLive, *description)
 	if err != nil {
@@ -352,11 +354,11 @@ func runQueue(ctx context.Context, env *environment, arguments []string) error {
 		return errors.New("usage: lac queue <resource>")
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	status, err := client.Queue(ctx, arguments[0])
 	if err != nil {
@@ -396,11 +398,11 @@ func runAcquire(ctx context.Context, env *environment, arguments []string) error
 		return errors.New("usage: lac acquire [flags] <resource>")
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	lease, err := client.Acquire(ctx, lacclient.AcquireRequest{
 		Resource: flags.Arg(0), Reason: *reason, Priority: *priority,
@@ -425,11 +427,11 @@ func runRelease(ctx context.Context, env *environment, arguments []string) error
 		return errors.New("usage: lac release <lease-id>")
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	if err := client.Release(ctx, arguments[0]); err != nil {
 		return err
@@ -445,11 +447,11 @@ func runRelease(ctx context.Context, env *environment, arguments []string) error
 }
 
 func runHeld(ctx context.Context, env *environment, _ []string) error {
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	leases, err := client.Held(ctx)
 	if err != nil {
@@ -474,11 +476,11 @@ func runHeld(ctx context.Context, env *environment, _ []string) error {
 }
 
 func runDeregister(ctx context.Context, env *environment, _ []string) error {
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	released, err := client.Deregister(ctx)
 	if err != nil {
@@ -521,4 +523,76 @@ func shortTime(value string) string {
 	}
 
 	return instant.Local().Format("15:04:05")
+}
+
+// runReport asks every agent what it is doing and waits for the answers. It is the operator's
+// question — "what is everybody up to?" — with one command and one screen of output.
+func runReport(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("report", flag.ContinueOnError)
+	deadline := flags.Duration("deadline", 30*time.Second, "how long to wait for answers")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+
+	question := strings.Join(flags.Args(), " ")
+	if question == "" {
+		question = "What are you working on right now?"
+	}
+
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	collection, err := client.RequestReports(ctx, question, *deadline, true)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, collection)
+	}
+
+	fmt.Fprintf(env.output, "asked\t%d agent(s): %s\n", collection.Asked, collection.Question)
+
+	if collection.Asked == 0 {
+		fmt.Fprintln(env.output, "\nnobody else is connected")
+		return nil
+	}
+
+	for _, report := range collection.Reports {
+		fmt.Fprintf(env.output, "\n%s\t%s\n", report.AgentName, report.Body)
+	}
+
+	if len(collection.Silent) > 0 {
+		fmt.Fprintf(env.output, "\nno answer\t%s\n", strings.Join(collection.Silent, ", "))
+	}
+
+	return nil
+}
+
+// runAnswer answers a report request, for an agent driving LAC from a shell rather than MCP.
+func runAnswer(ctx context.Context, env *environment, arguments []string) error {
+	if len(arguments) < 2 {
+		return errors.New("usage: lac answer <request-id> <what you are doing>")
+	}
+
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	if err := client.SubmitReport(ctx, arguments[0], strings.Join(arguments[1:], " ")); err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, map[string]any{"recorded": true, "request_id": arguments[0]})
+	}
+
+	fmt.Fprintf(env.output, "answered\t%s\n", arguments[0])
+
+	return nil
 }

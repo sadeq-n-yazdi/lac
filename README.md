@@ -90,6 +90,7 @@ lac agents                               # who is working right now
 lac queue test                           # who is waiting, and for what
 lac send claude-b question 'are you touching the parser?'
 lac inbox --ack                          # read what was sent to you
+lac report "what are you working on?"    # ask every agent, and wait for the answers
 ```
 
 There is no setup step: the first command registers this shell as an agent, named after the directory

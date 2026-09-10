@@ -74,6 +74,7 @@ read it, and `lac skill path` to see where it would go.
 | `lac_queue`        | Who is waiting for a resource, in order                         |
 | `lac_send_message` | Tell another agent — or everyone — something                    |
 | `lac_inbox`        | Read what was sent to this session                              |
+| `lac_report`       | Answer the operator's "what is everyone working on?"            |
 
 Two read-only resources are exposed as well: `lac://agents` and `lac://resources`, for a client that
 would rather fetch state than spend a tool call.

@@ -86,12 +86,28 @@ changing something you were about to change, believe them and pick something els
 Use `broadcast: true` sparingly — it interrupts every agent on the machine. It is right for "I am
 about to rebase main" and wrong for "I finished a function".
 
-## 3. Report to the user
+## 3. Answer the operator when they ask
+
+The operator can ask every agent at once what it is working on. The question arrives in your inbox
+as a message of kind `report-request`, carrying a `request_id`. Answer it promptly:
+
+```
+lac_report(request_id: "<from the message>", text: "rewriting the parser tests, about half done")
+```
+
+One or two sentences: what you are changing, and roughly how far along you are. The operator is
+waiting for it, and an agent that does not answer is listed as silent — which reads as "this one
+may be stuck".
+
+From a shell: `lac answer <request-id> "what you are doing"`.
+
+## 4. Report to the user
 
 When the user asks what everyone is doing, or why something is waiting:
 
 - `lac_agents` — who is working, and where
 - `lac_queue(resource: "test")` — who holds the resource and who is in line, in order
+- `lac report` from a shell — asks every agent and waits for their answers
 
 Summarise it in a sentence or two rather than pasting the raw output.
 

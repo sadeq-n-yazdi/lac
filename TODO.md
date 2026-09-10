@@ -40,7 +40,7 @@ and the discussion.
 
 ## Milestone 5 — Reporting and Telegram
 
-- [ ] Report request, submit and collect
+- [x] Report request, submit and collect
 - [ ] Telegram bridge with chat-ID allowlist and outbound long polling
 - [ ] Bot commands: `/agents`, `/queue`, `/report`, `/say`
 - [ ] Push notifications for lease grants and direct messages

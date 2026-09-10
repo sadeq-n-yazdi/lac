@@ -101,6 +101,19 @@ func toolDefinitions() []tool {
 			}, []string{"kind", "text"}),
 		},
 		{
+			Name:  "lac_report",
+			Title: "Answer the operator's report request",
+			Description: "Answer a request from the operator asking what you are working on. You " +
+				"will find the request in lac_inbox as a message of kind \"report-request\", carrying " +
+				"a request_id. Answer promptly and in one or two sentences: the operator is waiting, " +
+				"and an agent that does not answer is listed as silent.",
+			InputSchema: object(map[string]any{
+				"request_id": property("string", "The request_id from the report-request message."),
+				"text": property("string",
+					"What you are working on right now, in a sentence or two. Say what you are changing and roughly how far along you are."),
+			}, []string{"request_id", "text"}),
+		},
+		{
 			Name:  "lac_inbox",
 			Title: "Read messages sent to you",
 			Description: "Read the messages other agents have sent you. Call this when you start " +
@@ -125,6 +138,7 @@ func toolHandlers() map[string]toolHandler {
 		"lac_queue":        handleQueue,
 		"lac_send_message": handleSendMessage,
 		"lac_inbox":        handleInbox,
+		"lac_report":       handleReport,
 	}
 }
 
@@ -362,6 +376,33 @@ func handleSendMessage(
 	return textResult(fmt.Sprintf("Sent to %d agents.", sent.Recipients))
 }
 
+type reportArguments struct {
+	RequestID string `json:"request_id"`
+	Text      string `json:"text"`
+}
+
+func handleReport(
+	ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request reportArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.RequestID == "" {
+		return errorResult("Which request? Give request_id, from the report-request message in " +
+			"lac_inbox.")
+	}
+	if request.Text == "" {
+		return errorResult("Nothing to report: give text saying what you are working on.")
+	}
+
+	if err := client.SubmitReport(ctx, request.RequestID, request.Text); err != nil {
+		return errorResult("Could not send your report: %v", err)
+	}
+
+	return textResult("Reported. The operator can see it.")
+}
+
 type inboxArguments struct {
 	KeepUnread bool `json:"keep_unread"`
 }
@@ -391,6 +432,12 @@ func handleInbox(ctx context.Context, _ *Server, client *lacclient.Client, argum
 		if sender == "" {
 			sender = message.From
 		}
+
+		if message.Kind == "report-request" {
+			fmt.Fprintf(&report, "\n%s", reportRequestFrom(sender, message.Body))
+			continue
+		}
+
 		fmt.Fprintf(&report, "\nFrom %s (%s): %s", sender, message.Kind, textOf(message.Body))
 	}
 
@@ -403,6 +450,22 @@ func handleInbox(ctx context.Context, _ *Server, client *lacclient.Client, argum
 	}
 
 	return textResult(report.String())
+}
+
+// reportRequestFrom renders a report request as an instruction rather than a puzzle: the model
+// needs the question and the request id together, or it cannot answer.
+func reportRequestFrom(sender string, body json.RawMessage) string {
+	var shaped struct {
+		RequestID string `json:"request_id"`
+		Question  string `json:"question"`
+	}
+
+	if err := json.Unmarshal(body, &shaped); err != nil || shaped.RequestID == "" {
+		return fmt.Sprintf("From %s (report-request): %s", sender, string(body))
+	}
+
+	return fmt.Sprintf("The operator asks: %s\n  Answer now with lac_report(request_id: %q, text: ...)",
+		shaped.Question, shaped.RequestID)
 }
 
 // textOf pulls the readable part out of a message body, falling back to the raw JSON for a message
