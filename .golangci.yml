@@ -40,6 +40,11 @@ linters:
         - style
       disabled-checks:
         - whyNoLint
+      settings:
+        hugeParam:
+          # Domain types are passed by value on purpose: they are immutable snapshots, and a
+          # pointer would invite a caller to mutate a record another goroutine is reading.
+          sizeThreshold: 256
     govet:
       enable-all: true
       disable:
