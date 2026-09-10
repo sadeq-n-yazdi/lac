@@ -63,6 +63,8 @@ type Config struct {
 	// Operators are the agent names that additionally may define resources and ask everyone for a
 	// report. These are the operator's own tools, not the AI sessions.
 	Operators []string `yaml:"operators"`
+	// Telegram is the optional bridge to a phone. Off unless configured.
+	Telegram TelegramConfig `yaml:"telegram"`
 }
 
 // CapabilitiesConfig is the policy applied to every agent that is not an operator.
@@ -167,7 +169,7 @@ func defaults(paths Paths) Config {
 			Resources:    []string{core.WildcardResource},
 			CanBroadcast: true,
 		},
-		Operators: []string{"operator"},
+		Operators: []string{"operator", "telegram"},
 	}
 }
 
@@ -259,6 +261,10 @@ func (c Config) Validate() error {
 	case "debug", "info", "warn", "error":
 	default:
 		return fmt.Errorf("%w: log_level must be debug, info, warn or error, got %q", ErrInvalidConfig, c.LogLevel)
+	}
+
+	if err := c.Telegram.validate(); err != nil {
+		return err
 	}
 
 	return c.validateResources()

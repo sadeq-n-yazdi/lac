@@ -41,9 +41,9 @@ and the discussion.
 ## Milestone 5 — Reporting and Telegram
 
 - [x] Report request, submit and collect
-- [ ] Telegram bridge with chat-ID allowlist and outbound long polling
-- [ ] Bot commands: `/agents`, `/queue`, `/report`, `/say`
-- [ ] Push notifications for lease grants and direct messages
+- [x] Telegram bridge with chat-ID allowlist and outbound long polling
+- [x] Bot commands: `/agents`, `/resources`, `/queue`, `/report`, `/say`, `/broadcast`
+- [x] Messages addressed to the operator forwarded to the phone
 
 ## Milestone 6 — Dispatch (worker agents)
 

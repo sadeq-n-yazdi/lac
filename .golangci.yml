@@ -42,9 +42,10 @@ linters:
         - whyNoLint
       settings:
         hugeParam:
-          # Domain types are passed by value on purpose: they are immutable snapshots, and a
-          # pointer would invite a caller to mutate a record another goroutine is reading.
-          sizeThreshold: 256
+          # Domain types and the configuration are passed by value on purpose: they are immutable
+          # snapshots, and a pointer would invite a caller to mutate something another goroutine is
+          # reading. None of them is copied in a hot loop.
+          sizeThreshold: 512
         rangeValCopy:
           # Same reasoning, and these ranges are over a handful of agents or leases, never a
           # hot loop.
@@ -64,6 +65,8 @@ linters:
         - initialized
         - serialize
         - serialized
+        # Telegram's own error text, quoted verbatim in a test fixture.
+        - unauthorized
     nolintlint:
       require-explanation: true
       require-specific: true

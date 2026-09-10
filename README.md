@@ -63,6 +63,7 @@ new front end means adding a transport, not touching business rules.
 - [docs/architecture.md](docs/architecture.md) — how the parts fit together, and why
 - [docs/protocol.md](docs/protocol.md) — the JSON-RPC surface, for writing a client
 - [docs/mcp.md](docs/mcp.md) — using LAC from Claude Code, Codex or another MCP client
+- [docs/telegram.md](docs/telegram.md) — asking what the agents are doing from your phone
 
 ## Status
 
@@ -130,7 +131,8 @@ LAC follows the XDG base directory spec:
 
 ## Security
 
-LAC listens on a Unix domain socket only — there is no TCP listener. The socket directory is `0700`, the socket is
+LAC listens on a Unix domain socket only — there is no TCP listener anywhere, including in the
+optional Telegram bridge, which calls outward and is never called into. The socket directory is `0700`, the socket is
 `0600`, and every connection's peer UID must match the daemon's. Agents authenticate with a token issued at
 registration and stored only as a keyed hash. See [SECURITY.md](SECURITY.md) for the full model and how to report a
 vulnerability.

@@ -43,7 +43,7 @@ impersonate an agent, or starve or steal resource slots.
 | Agent authentication   | A 256-bit token is issued at registration, stored only as a keyed hash, and compared in constant time. |
 | Capabilities           | Deny by default. Each agent is granted the specific resources it may lease and whether it may broadcast. |
 | No remote execution    | LAC hands out slots. Agent-supplied working directories are treated as data, never executed.       |
-| Telegram               | Outbound long polling only. Inbound commands are gated by a chat-ID allowlist; the bot token is read from a mode-checked file or the environment and never committed. |
+| Telegram               | Outbound long polling only — no listener, no inbound connection. Commands are gated by a chat-ID allowlist that cannot be disabled; a message from any other chat gets no reply at all and is audited. The bot token comes from a mode-checked file or the environment, is never logged, and is stripped from error messages that would otherwise carry the URL it sits in. |
 | Audit log              | Every state change is appended to an audit table with actor, action, target and timestamp.          |
 | Supply chain           | `gosec` and `govulncheck` run in CI; Dependabot keeps modules and actions current.                  |
 
