@@ -11,6 +11,7 @@ import (
 	"code.sadeq.uk/lac/internal/service/leasing"
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
+	"code.sadeq.uk/lac/internal/service/reporting"
 	"code.sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
@@ -19,6 +20,7 @@ type API struct {
 	registry      *registry.Service
 	messaging     *messaging.Service
 	leasing       *leasing.Service
+	reporting     *reporting.Service
 	authenticator *auth.Authenticator
 	logger        *slog.Logger
 }
@@ -34,6 +36,7 @@ func New(
 	registryService *registry.Service,
 	messagingService *messaging.Service,
 	leasingService *leasing.Service,
+	reportingService *reporting.Service,
 	authenticator *auth.Authenticator,
 	options Options,
 ) *API {
@@ -46,6 +49,7 @@ func New(
 		registry:      registryService,
 		messaging:     messagingService,
 		leasing:       leasingService,
+		reporting:     reportingService,
 		authenticator: authenticator,
 		logger:        logger,
 	}
@@ -81,6 +85,10 @@ func (a *API) Register(router *jsonrpc.Router) {
 
 	router.Register("queue.status", a.authenticated(a.handleQueueStatus))
 	router.Register("queue.cancel", a.authenticated(a.handleQueueCancel))
+
+	router.Register("report.request", a.authenticated(a.handleReportRequest))
+	router.Register("report.submit", a.authenticated(a.handleReportSubmit))
+	router.Register("report.collect", a.authenticated(a.handleReportCollect))
 }
 
 // handler is a method that already knows who is calling.

@@ -9,6 +9,7 @@ import (
 	"code.sadeq.uk/lac/internal/service/leasing"
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
+	"code.sadeq.uk/lac/internal/service/reporting"
 )
 
 // housekeepingInterval is how often the daemon looks for abandoned leases and silent agents. It is
@@ -52,7 +53,9 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 		Logger:   d.logger,
 	})
 
-	api.New(d.registry, d.messaging, d.leasing, authenticator, api.Options{Logger: d.logger}).
+	d.reporting = reporting.New(d.store, d.registry, d.messaging, reporting.Options{Logger: d.logger})
+
+	api.New(d.registry, d.messaging, d.leasing, d.reporting, authenticator, api.Options{Logger: d.logger}).
 		Register(d.router)
 
 	return d.defineConfiguredResources(ctx)

@@ -58,7 +58,11 @@ order.
 ```
 
 Dependencies point inward: `internal/core` (domain) ← `internal/service` (use cases) ← transports and storage. Adding a
-new front end means adding a transport, not touching business rules. See [docs/architecture.md](docs/architecture.md).
+new front end means adding a transport, not touching business rules.
+
+- [docs/architecture.md](docs/architecture.md) — how the parts fit together, and why
+- [docs/protocol.md](docs/protocol.md) — the JSON-RPC surface, for writing a client
+- [docs/mcp.md](docs/mcp.md) — using LAC from Claude Code, Codex or another MCP client
 
 ## Status
 
@@ -90,6 +94,7 @@ lac agents                               # who is working right now
 lac queue test                           # who is waiting, and for what
 lac send claude-b question 'are you touching the parser?'
 lac inbox --ack                          # read what was sent to you
+lac report "what are you working on?"    # ask every agent, and wait for the answers
 ```
 
 There is no setup step: the first command registers this shell as an agent, named after the directory
@@ -101,6 +106,17 @@ to `~/.config/lac/config.yaml` and edit it. An operator can also define one on t
 ```sh
 lac --name operator define --capacity 4 --description "concurrent test runs" test
 ```
+
+## Using it from an AI tool
+
+LAC speaks MCP, so Claude Code and Codex can use it directly:
+
+```sh
+claude mcp add lac -- lac mcp   # register the server
+lac skill install               # teach the model when to use it
+```
+
+See [docs/mcp.md](docs/mcp.md) for Codex, for other clients, and for what the model gets.
 
 ## Files and paths
 

@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Reports: `lac report` asks every agent what it is doing and collects the answers, naming anyone
+  who stayed silent. Agents answer with `lac_report` over MCP or `lac answer` from a shell.
+- `docs/protocol.md`: the method-by-method JSON-RPC reference, enough to write a client in another
+  language.
+- `lac mcp`: a Model Context Protocol server, so Claude Code, Codex and other MCP clients discover
+  LAC by themselves. Eight tools and two read-only resources, over the same client the CLI uses.
+- `lac skill install`: the bundled skill teaching an agent when to queue, whom to tell, and what to
+  read, installed to `~/.claude/skills/lac/SKILL.md`.
 - `internal/auth`: agent tokens stored as keyed hashes, and capability checks that deny by default.
 - `internal/service/registry`, `internal/service/messaging`, `internal/service/leasing`: the agent roster,
   durable messaging, and the fair, capacity-bounded resource queue.

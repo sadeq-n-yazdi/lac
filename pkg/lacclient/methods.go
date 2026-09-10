@@ -401,3 +401,54 @@ func (c *Client) Info(ctx context.Context) (DaemonInfo, error) {
 func (c *Client) Ping(ctx context.Context) error {
 	return c.Call(ctx, "daemon.ping", nil, nil)
 }
+
+// Report is one agent's answer to a report request.
+type Report struct {
+	AgentID   string `json:"agent_id"`
+	AgentName string `json:"agent_name"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ReportCollection is everything known about a report request: the answers, and who stayed silent.
+type ReportCollection struct {
+	RequestID string   `json:"request_id"`
+	Question  string   `json:"question"`
+	Asked     int      `json:"asked"`
+	Reports   []Report `json:"reports"`
+	// Silent names the agents that were asked and did not answer.
+	Silent   []string `json:"silent"`
+	Complete bool     `json:"complete"`
+}
+
+// RequestReports asks every agent what it is doing.
+//
+// With wait set, the call returns once everyone has answered or the deadline passes; without it,
+// it returns immediately and the caller collects later with CollectReports.
+func (c *Client) RequestReports(
+	ctx context.Context, question string, deadline time.Duration, wait bool,
+) (ReportCollection, error) {
+	params := map[string]any{"question": question, "wait": wait}
+	if deadline > 0 {
+		params["deadline"] = deadline.String()
+	}
+
+	var result ReportCollection
+	err := c.Call(ctx, "report.request", params, &result)
+
+	return result, err
+}
+
+// SubmitReport answers a report request. The request id comes from the message the daemon sent.
+func (c *Client) SubmitReport(ctx context.Context, requestID, body string) error {
+	return c.Call(ctx, "report.submit", map[string]any{"request_id": requestID, "body": body}, nil)
+}
+
+// CollectReports reads the answers to a request, optionally waiting for the stragglers.
+func (c *Client) CollectReports(ctx context.Context, requestID string, wait bool) (ReportCollection, error) {
+	var result ReportCollection
+
+	err := c.Call(ctx, "report.collect", map[string]any{"request_id": requestID, "wait": wait}, &result)
+
+	return result, err
+}

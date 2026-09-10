@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"code.sadeq.uk/lac/pkg/lacclient"
 )
@@ -25,12 +26,16 @@ type identity struct {
 	workdir string
 }
 
-// connect returns a client authenticated as this identity, registering if there is no token.
+// connect returns a client authenticated as this identity, and a function that releases it.
 //
-// The order — flag, environment, saved file, then register — is what lets an agent drop `lac run`
-// in front of a command with no setup at all, while an operator who wants a stable identity can
-// have one.
-func (i identity) connect(ctx context.Context, socketPath string) (*lacclient.Client, error) {
+// The token comes from the flag, the environment, or the saved file, in that order; with none of
+// them the command registers itself, which is what lets an agent drop `lac run` in front of a
+// command with no setup at all.
+//
+// A command that had to register is a passing visitor, not a resident: the release function
+// deregisters it, so a shell full of one-shot commands does not fill the roster with names that
+// linger until their heartbeats run out.
+func (i identity) connect(ctx context.Context, socketPath string) (*lacclient.Client, func(), error) {
 	token := i.token
 	if token == "" {
 		token = os.Getenv("LAC_TOKEN")
@@ -38,37 +43,72 @@ func (i identity) connect(ctx context.Context, socketPath string) (*lacclient.Cl
 	if token == "" {
 		saved, err := readSavedToken()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		token = saved
 	}
 
 	client, err := lacclient.Dial(ctx, lacclient.Options{SocketPath: socketPath, Token: token})
 	if err != nil {
-		return nil, err
+		// A token that no longer works — the daemon's database was reset, the agent was
+		// deregistered — should not stop the command. Register again and carry on, which is what
+		// the operator wanted anyway.
+		if token == "" || lacclient.ErrorCode(err) != lacclient.CodeUnauthorised {
+			return nil, nil, err
+		}
+
+		fmt.Fprintln(os.Stderr, "lac: the saved token is no longer valid; registering again")
+
+		token = ""
+		if client, err = lacclient.Dial(ctx, lacclient.Options{SocketPath: socketPath}); err != nil {
+			return nil, nil, err
+		}
 	}
+
+	closeOnly := func() { _ = client.Close() }
+
 	if token != "" {
-		return client, nil
+		return client, closeOnly, nil
 	}
 
 	name, err := i.resolveName()
 	if err != nil {
-		return nil, err
+		closeOnly()
+		return nil, nil, err
 	}
 
 	workdir := i.workdir
 	if workdir == "" {
 		workdir, err = os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("resolving the working directory: %w", err)
+			closeOnly()
+			return nil, nil, fmt.Errorf("resolving the working directory: %w", err)
 		}
 	}
 
 	if _, err := client.Register(ctx, name, i.kind, workdir, os.Getpid()); err != nil {
-		return nil, fmt.Errorf("registering as %q: %w", name, err)
+		closeOnly()
+		return nil, nil, fmt.Errorf("registering as %q: %w", name, err)
 	}
 
-	return client, nil
+	// The release runs after the command has finished, when the caller's context is usually
+	// already cancelled, so deregister makes its own.
+	return client, func() { //nolint:contextcheck // deregister makes a fresh, bounded context
+		deregister(client)
+		closeOnly()
+	}, nil
+}
+
+// deregister retires a name this command claimed for itself, giving back anything it still holds.
+// It gets its own short context, because the caller's is usually finished by the time this runs.
+func deregister(client *lacclient.Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err := client.Deregister(ctx); err != nil {
+		// Not worth failing the command over: the daemon reaps a silent agent anyway.
+		fmt.Fprintf(os.Stderr, "lac: could not deregister: %v\n", err)
+	}
 }
 
 // resolveName derives an agent name when none was given: the directory being worked in, plus this

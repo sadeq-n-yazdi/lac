@@ -45,11 +45,11 @@ func runRun(ctx context.Context, env *environment, arguments []string) error {
 		return errors.New("nothing to run: put the command after --, as in lac run --resource test -- make test")
 	}
 
-	client, err := env.identity.connect(ctx, env.socketPath)
+	client, release, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Close() }()
+	defer release()
 
 	if *reason == "" {
 		*reason = strings.Join(commandLine, " ")
