@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `internal/auth`: agent tokens stored as keyed hashes, and capability checks that deny by default.
+- `internal/service/registry`, `internal/service/messaging`, `internal/service/leasing`: the agent roster,
+  durable messaging, and the fair, capacity-bounded resource queue.
+- `internal/api`: the JSON-RPC method surface, with every call but registration behind a token.
+- `pkg/lacclient`: the public Go client for the daemon.
+- The `lac` command-line client, including `lac run --resource <name> -- <command>`.
 - `internal/core`: the domain vocabulary and the storage contracts, with no I/O.
 - `internal/config`: XDG path resolution and layered configuration with strict validation.
 - `internal/store/sqlite`: a pure-Go SQLite store with embedded, versioned migrations.

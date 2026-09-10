@@ -1,0 +1,522 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"code.sadeq.uk/lac/internal/version"
+	"code.sadeq.uk/lac/pkg/lacclient"
+)
+
+func commands() []command {
+	return []command{
+		{name: "version", summary: "print the version", run: runVersion},
+		{name: "info", summary: "what the daemon is and what it can do", run: runInfo},
+		{name: "register", summary: "register this shell as an agent and print its token", run: runRegister},
+		{name: "agents", summary: "who is connected right now", run: runAgents},
+		{name: "send", summary: "send a message to an agent or a topic", run: runSend},
+		{name: "inbox", summary: "read the messages waiting for you", run: runInbox},
+		{name: "resources", summary: "the shared resources on this machine", run: runResources},
+		{name: "define", summary: "create or reconfigure a resource (operators only)", run: runDefine},
+		{name: "queue", summary: "who is waiting for a resource", run: runQueue},
+		{name: "acquire", summary: "take a slot and hold it until released", run: runAcquire},
+		{name: "release", summary: "give a slot back", run: runRelease},
+		{name: "held", summary: "the slots you are holding", run: runHeld},
+		{name: "run", summary: "wait for a slot, then run a command", run: runRun},
+		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},
+	}
+}
+
+func runVersion(_ context.Context, env *environment, _ []string) error {
+	if env.asJSON {
+		return writeJSON(env, map[string]string{
+			"version": version.Version, "commit": version.Commit, "build_date": version.BuildDate,
+		})
+	}
+
+	fmt.Fprintf(env.output, "lac %s\n", version.String())
+
+	return nil
+}
+
+func runInfo(ctx context.Context, env *environment, _ []string) error {
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	info, err := client.Info(ctx)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, info)
+	}
+
+	fmt.Fprintf(env.output, "version\t%s\n", info.Version)
+	fmt.Fprintf(env.output, "protocol\t%s\n", info.Protocol)
+	fmt.Fprintf(env.output, "started\t%s\n", info.StartedAt)
+	fmt.Fprintf(env.output, "uptime\t%s\n", (time.Duration(info.UptimeSeconds) * time.Second).String())
+	fmt.Fprintf(env.output, "methods\t%s\n", strings.Join(info.Methods, " "))
+
+	return nil
+}
+
+func runRegister(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("register", flag.ContinueOnError)
+	save := flags.Bool("save", false, "save the token for later commands")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+
+	name, err := env.identity.resolveName()
+	if err != nil {
+		return err
+	}
+
+	workdir := env.identity.workdir
+	if workdir == "" {
+		if workdir, err = os.Getwd(); err != nil {
+			return fmt.Errorf("resolving the working directory: %w", err)
+		}
+	}
+
+	client, err := lacclient.Dial(ctx, lacclient.Options{SocketPath: env.socketPath})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	registration, err := client.Register(ctx, name, env.identity.kind, workdir, os.Getpid())
+	if err != nil {
+		return err
+	}
+
+	var savedTo string
+	if *save {
+		if savedTo, err = saveToken(registration.Token); err != nil {
+			return err
+		}
+	}
+
+	if env.asJSON {
+		return writeJSON(env, map[string]any{
+			"agent": registration.Agent, "token": registration.Token, "saved_to": savedTo,
+		})
+	}
+
+	fmt.Fprintf(env.output, "registered\t%s (%s)\n", registration.Agent.Name, registration.Agent.ID)
+	fmt.Fprintf(env.output, "token\t%s\n", registration.Token)
+	if savedTo != "" {
+		fmt.Fprintf(env.output, "saved to\t%s\n", savedTo)
+	} else {
+		fmt.Fprintf(env.output, "\t(this token is shown once; export LAC_TOKEN to reuse it)\n")
+	}
+
+	return nil
+}
+
+func runAgents(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("agents", flag.ContinueOnError)
+	all := flags.Bool("all", false, "include stale and deregistered agents")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	var states []string
+	if *all {
+		states = []string{"active", "stale", "deregistered"}
+	}
+
+	agents, err := client.Agents(ctx, states...)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, agents)
+	}
+
+	if len(agents) == 0 {
+		fmt.Fprintln(env.output, "no agents are connected")
+		return nil
+	}
+
+	fmt.Fprintln(env.output, "NAME\tKIND\tSTATE\tWORKDIR\tLAST SEEN")
+	for _, agent := range agents {
+		fmt.Fprintf(env.output, "%s\t%s\t%s\t%s\t%s\n",
+			agent.Name, agent.Kind, agent.State, agent.Workdir, shortTime(agent.LastHeartbeatAt))
+	}
+
+	return nil
+}
+
+func runSend(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("send", flag.ContinueOnError)
+	topic := flags.String("topic", "", "publish to this topic instead of a single agent")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+
+	positional := flags.Args()
+	if *topic == "" && len(positional) < 3 {
+		return errors.New("usage: lac send <agent> <kind> <body>, or lac send --topic <topic> <kind> <body>")
+	}
+	if *topic != "" && len(positional) < 2 {
+		return errors.New("usage: lac send --topic <topic> <kind> <body>")
+	}
+
+	var recipient, kind, body string
+	if *topic != "" {
+		kind, body = positional[0], strings.Join(positional[1:], " ")
+	} else {
+		recipient, kind, body = positional[0], positional[1], strings.Join(positional[2:], " ")
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	payload := bodyOf(body)
+
+	var sent lacclient.Sent
+	if *topic != "" {
+		sent, err = client.SendToTopic(ctx, *topic, kind, payload)
+	} else {
+		sent, err = client.SendTo(ctx, recipient, kind, payload)
+	}
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, sent)
+	}
+
+	fmt.Fprintf(env.output, "sent\t%s to %d agent(s), %d connected\n",
+		sent.MessageID, sent.Recipients, sent.Notified)
+
+	return nil
+}
+
+// bodyOf lets a caller pass either JSON or plain text. Plain text becomes {"text": "..."} so the
+// wire format stays JSON without forcing everyone to quote braces in a shell.
+func bodyOf(body string) any {
+	trimmed := strings.TrimSpace(body)
+	if json.Valid([]byte(trimmed)) && strings.HasPrefix(trimmed, "{") {
+		return json.RawMessage(trimmed)
+	}
+
+	return map[string]string{"text": body}
+}
+
+func runInbox(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("inbox", flag.ContinueOnError)
+	acknowledge := flags.Bool("ack", false, "acknowledge the messages that are shown")
+	limit := flags.Int("limit", 0, "how many messages to read")
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	messages, err := client.Inbox(ctx, *limit)
+	if err != nil {
+		return err
+	}
+
+	if *acknowledge && len(messages) > 0 {
+		ids := make([]string, 0, len(messages))
+		for _, message := range messages {
+			ids = append(ids, message.ID)
+		}
+		if _, err := client.Acknowledge(ctx, ids...); err != nil {
+			return err
+		}
+	}
+
+	if env.asJSON {
+		return writeJSON(env, messages)
+	}
+
+	if len(messages) == 0 {
+		fmt.Fprintln(env.output, "nothing waiting")
+		return nil
+	}
+
+	fmt.Fprintln(env.output, "FROM\tKIND\tWHEN\tBODY")
+	for _, message := range messages {
+		from := message.FromName
+		if message.Topic != "" {
+			from += " → " + message.Topic
+		}
+		fmt.Fprintf(env.output, "%s\t%s\t%s\t%s\n",
+			from, message.Kind, shortTime(message.CreatedAt), string(message.Body))
+	}
+
+	return nil
+}
+
+func runResources(ctx context.Context, env *environment, _ []string) error {
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	resources, err := client.Resources(ctx)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, resources)
+	}
+
+	if len(resources) == 0 {
+		fmt.Fprintln(env.output, "no resources are defined; an operator can add one with lac-managed config")
+		return nil
+	}
+
+	fmt.Fprintln(env.output, "NAME\tHELD\tFREE\tWAITING\tTTL\tDESCRIPTION")
+	for _, resource := range resources {
+		fmt.Fprintf(env.output, "%s\t%d/%d\t%d\t%d\t%s\t%s\n",
+			resource.Name, resource.Held, resource.Capacity, resource.Free,
+			resource.Waiting, resource.LeaseTimeToLive, resource.Description)
+	}
+
+	return nil
+}
+
+// runDefine creates or reconfigures a resource. It needs the operator capability, because the
+// machine's limits are the operator's decision rather than an agent's.
+func runDefine(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("define", flag.ContinueOnError)
+	var (
+		capacity    = flags.Int("capacity", 0, "how many agents may hold a slot at once (required)")
+		timeToLive  = flags.Duration("ttl", 0, "how long a slot survives without renewal")
+		description = flags.String("description", "", "what this resource is")
+	)
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+	if flags.NArg() < 1 || *capacity < 1 {
+		return errors.New("usage: lac define --capacity <n> [flags] <resource>")
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	resource, err := client.DefineResource(ctx, flags.Arg(0), *capacity, *timeToLive, *description)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, resource)
+	}
+
+	fmt.Fprintf(env.output, "defined\t%s with %d slot(s), %s lease\n",
+		resource.Name, resource.Capacity, resource.LeaseTimeToLive)
+
+	return nil
+}
+
+func runQueue(ctx context.Context, env *environment, arguments []string) error {
+	if len(arguments) < 1 {
+		return errors.New("usage: lac queue <resource>")
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	status, err := client.Queue(ctx, arguments[0])
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, status)
+	}
+
+	fmt.Fprintf(env.output, "%s\t%d of %d slots held, %d waiting\n",
+		status.Resource.Name, status.Resource.Held, status.Resource.Capacity, status.Resource.Waiting)
+
+	if len(status.Waiting) > 0 {
+		fmt.Fprintln(env.output, "\nPOSITION\tAGENT\tPRIORITY\tSINCE\tREASON")
+		for _, entry := range status.Waiting {
+			fmt.Fprintf(env.output, "%d\t%s\t%d\t%s\t%s\n",
+				entry.Position, entry.AgentName, entry.Priority, shortTime(entry.RequestedAt), entry.Reason)
+		}
+	}
+
+	return nil
+}
+
+func runAcquire(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("acquire", flag.ContinueOnError)
+	var (
+		reason   = flags.String("reason", "", "what the slot is for, shown in the queue")
+		priority = flags.Int("priority", 0, "higher goes first")
+		noWait   = flags.Bool("no-wait", false, "fail immediately if the resource is full")
+		timeout  = flags.Duration("timeout", 0, "give up after this long")
+	)
+	if err := flags.Parse(arguments); err != nil {
+		return err //nolint:wrapcheck // the flag package already printed the problem
+	}
+	if flags.NArg() < 1 {
+		return errors.New("usage: lac acquire [flags] <resource>")
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	lease, err := client.Acquire(ctx, lacclient.AcquireRequest{
+		Resource: flags.Arg(0), Reason: *reason, Priority: *priority,
+		NoWait: *noWait, Timeout: *timeout,
+	})
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, lease)
+	}
+
+	fmt.Fprintf(env.output, "granted\t%s on %s until %s\n", lease.ID, lease.Resource, shortTime(lease.ExpiresAt))
+	fmt.Fprintf(env.output, "\trelease it with: lac release %s\n", lease.ID)
+
+	return nil
+}
+
+func runRelease(ctx context.Context, env *environment, arguments []string) error {
+	if len(arguments) < 1 {
+		return errors.New("usage: lac release <lease-id>")
+	}
+
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	if err := client.Release(ctx, arguments[0]); err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, map[string]any{"released": true, "lease_id": arguments[0]})
+	}
+
+	fmt.Fprintf(env.output, "released\t%s\n", arguments[0])
+
+	return nil
+}
+
+func runHeld(ctx context.Context, env *environment, _ []string) error {
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	leases, err := client.Held(ctx)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, leases)
+	}
+
+	if len(leases) == 0 {
+		fmt.Fprintln(env.output, "you are not holding any slots")
+		return nil
+	}
+
+	fmt.Fprintln(env.output, "LEASE\tRESOURCE\tEXPIRES")
+	for _, lease := range leases {
+		fmt.Fprintf(env.output, "%s\t%s\t%s\n", lease.ID, lease.Resource, shortTime(lease.ExpiresAt))
+	}
+
+	return nil
+}
+
+func runDeregister(ctx context.Context, env *environment, _ []string) error {
+	client, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = client.Close() }()
+
+	released, err := client.Deregister(ctx)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, map[string]int{"released_leases": released})
+	}
+
+	fmt.Fprintf(env.output, "deregistered\t%d slot(s) given back\n", released)
+
+	return nil
+}
+
+func writeJSON(env *environment, value any) error {
+	if err := env.output.Flush(); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
+
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+
+	if err := encoder.Encode(value); err != nil {
+		return fmt.Errorf("writing output: %w", err)
+	}
+
+	return nil
+}
+
+// shortTime renders a daemon timestamp as something readable in a table.
+func shortTime(value string) string {
+	if value == "" {
+		return "-"
+	}
+
+	instant, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return value
+	}
+
+	return instant.Local().Format("15:04:05")
+}

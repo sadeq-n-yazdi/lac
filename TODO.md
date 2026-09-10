@@ -20,12 +20,12 @@ and the discussion.
 
 ## Milestone 2 — Registry, messaging, leases and CLI
 
-- [ ] Token issue and verification, per-agent capability checks
-- [ ] Agent registry with heartbeats and a stale-agent reaper
-- [ ] Messaging: send, inbox, acknowledge, topics, streaming subscribe
-- [ ] Leasing: transactional grant, fair queue ordering, TTL reaper, blocking acquire
-- [ ] `pkg/lacclient` Go client and the `lac` CLI, including `lac run --resource`
-- [ ] Concurrency test: six clients on a capacity-four resource
+- [x] Token issue and verification, per-agent capability checks
+- [x] Agent registry with heartbeats and a stale-agent reaper
+- [x] Messaging: send, inbox, acknowledge, topics, push notifications
+- [x] Leasing: transactional grant, fair queue ordering, TTL reaper, blocking acquire
+- [x] `pkg/lacclient` Go client and the `lac` CLI, including `lac run --resource`
+- [x] Concurrency test: six clients on a capacity-four resource
 
 ## Milestone 3 — MCP provider
 

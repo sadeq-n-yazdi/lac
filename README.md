@@ -83,12 +83,23 @@ make build      # binaries in ./bin
 ## Quick start
 
 ```sh
-lacd &                                        # start the daemon
-lac resource define test --capacity 4         # four concurrent test slots
-lac agent register --name claude-a --kind claude --workdir "$PWD"
-lac run --resource test -- make test          # queue, run, release
-lac agents                                    # who is connected
-lac report request "what are you working on?" # ask everyone
+lacd &                                   # start the daemon
+lac resources                            # what this machine shares, from your config
+lac run --resource test -- make test     # queue for a slot, run, release
+lac agents                               # who is working right now
+lac queue test                           # who is waiting, and for what
+lac send claude-b question 'are you touching the parser?'
+lac inbox --ack                          # read what was sent to you
+```
+
+There is no setup step: the first command registers this shell as an agent, named after the directory
+it is in. Give it a stable identity with `lac --name claude-a register --save` if you would rather.
+
+Resources come from your configuration file — copy [docs/config.example.yaml](docs/config.example.yaml)
+to `~/.config/lac/config.yaml` and edit it. An operator can also define one on the fly:
+
+```sh
+lac --name operator define --capacity 4 --description "concurrent test runs" test
 ```
 
 ## Files and paths
