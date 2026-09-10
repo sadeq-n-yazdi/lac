@@ -167,6 +167,30 @@ func (s *Service) Heartbeat(ctx context.Context, agentID string) error {
 	return nil
 }
 
+// ByID returns one agent.
+func (s *Service) ByID(ctx context.Context, agentID string) (core.Agent, error) {
+	agent, err := s.store.Agents().ByID(ctx, agentID)
+	if err != nil {
+		return core.Agent{}, err
+	}
+
+	return agent, nil
+}
+
+// ByName returns the live agent with that name.
+func (s *Service) ByName(ctx context.Context, name string) (core.Agent, error) {
+	agent, err := s.store.Agents().ByName(ctx, name)
+	if err != nil {
+		return core.Agent{}, err
+	}
+
+	return agent, nil
+}
+
+// TimeToLive is how long an agent may stay silent before it is treated as gone. Clients are told
+// this so they can pick a heartbeat interval rather than guessing at one.
+func (s *Service) TimeToLive() time.Duration { return s.options.TimeToLive }
+
 // List returns the roster.
 func (s *Service) List(ctx context.Context, filter core.AgentFilter) ([]core.Agent, error) {
 	agents, err := s.store.Agents().List(ctx, filter)

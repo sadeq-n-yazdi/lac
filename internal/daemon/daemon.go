@@ -13,6 +13,9 @@ import (
 
 	"code.sadeq.uk/lac/internal/config"
 	"code.sadeq.uk/lac/internal/core"
+	"code.sadeq.uk/lac/internal/service/leasing"
+	"code.sadeq.uk/lac/internal/service/messaging"
+	"code.sadeq.uk/lac/internal/service/registry"
 	"code.sadeq.uk/lac/internal/store/sqlite"
 	"code.sadeq.uk/lac/internal/transport/jsonrpc"
 	"code.sadeq.uk/lac/internal/transport/unixsock"
@@ -27,6 +30,10 @@ type Daemon struct {
 	server        *jsonrpc.Server
 	router        *jsonrpc.Router
 	startedAt     time.Time
+
+	registry  *registry.Service
+	messaging *messaging.Service
+	leasing   *leasing.Service
 }
 
 // New prepares a daemon: it creates the directories, opens the database, applies migrations and
@@ -56,22 +63,26 @@ func New(ctx context.Context, configuration config.Config, logger *slog.Logger) 
 		startedAt:     time.Now().UTC(),
 	}
 
-	if err := daemon.defineConfiguredResources(ctx); err != nil {
-		return nil, errors.Join(err, store.Close())
-	}
+	// The server exists before the services, because the messaging service pushes notifications
+	// through it.
+	daemon.server = jsonrpc.NewServer(daemon.router, jsonrpc.Options{
+		Logger:        logger,
+		ShutdownGrace: time.Duration(configuration.ShutdownGrace),
+	})
 
 	daemon.registerMethods()
 
+	if err := daemon.attachServices(ctx); err != nil {
+		return nil, errors.Join(err, store.Close())
+	}
+
+	// The socket is claimed last, so a start-up that fails for any other reason never disturbs a
+	// daemon that is already running.
 	listener, err := unixsock.Listen(ctx, unixsock.Options{Path: configuration.SocketPath, Logger: logger})
 	if err != nil {
 		return nil, errors.Join(err, store.Close())
 	}
 	daemon.listener = listener
-
-	daemon.server = jsonrpc.NewServer(daemon.router, jsonrpc.Options{
-		Logger:        logger,
-		ShutdownGrace: time.Duration(configuration.ShutdownGrace),
-	})
 
 	return daemon, nil
 }
@@ -91,6 +102,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 		"socket", d.listener.Path(),
 		"database", d.configuration.DatabasePath,
 		"pid", os.Getpid())
+
+	// Housekeeping runs alongside serving and stops with it.
+	go d.housekeeping(ctx)
 
 	err := d.server.Serve(ctx, d.listener)
 
