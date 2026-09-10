@@ -203,5 +203,8 @@ func (s *Store) Leases() core.LeaseRepository { return leaseRepository{s.queries
 // Reports returns the report repository.
 func (s *Store) Reports() core.ReportRepository { return reportRepository{s.queries} }
 
+// Tasks returns the dispatched-work repository.
+func (s *Store) Tasks() core.TaskRepository { return taskRepository{s.queries} }
+
 // Audit returns the append-only audit log.
 func (s *Store) Audit() core.AuditLog { return auditLog{s.queries} }

@@ -42,7 +42,7 @@ impersonate an agent, or starve or steal resource slots.
 | Peer verification      | Every accepted connection's peer UID must equal the daemon's UID, checked via the kernel.          |
 | Agent authentication   | A 256-bit token is issued at registration, stored only as a keyed hash, and compared in constant time. |
 | Capabilities           | Deny by default. Each agent is granted the specific resources it may lease and whether it may broadcast. |
-| No remote execution    | LAC hands out slots. Agent-supplied working directories are treated as data, never executed.       |
+| Command execution      | The daemon executes nothing. A worker (`lac worker`) does, and only a command the operator wrote in the configuration: a requester names a key, and there is no field anywhere in the API that carries a command line. No shell is involved, so nothing is interpreted as a pipeline or a substitution. The working directory is checked against the allowed roots before the task is queued. |
 | Telegram               | Outbound long polling only — no listener, no inbound connection. Commands are gated by a chat-ID allowlist that cannot be disabled; a message from any other chat gets no reply at all and is audited. The bot token comes from a mode-checked file or the environment, is never logged, and is stripped from error messages that would otherwise carry the URL it sits in. |
 | Audit log              | Every state change is appended to an audit table with actor, action, target and timestamp.          |
 | Supply chain           | `gosec` and `govulncheck` run in CI; Dependabot keeps modules and actions current.                  |
@@ -53,3 +53,5 @@ impersonate an agent, or starve or steal resource slots.
   token is group- or world-readable.
 - Prefer supplying the Telegram bot token through the environment on shared machines.
 - Revoke an agent with `lac agent deregister`, which invalidates its token immediately.
+- Only run `lac worker` for resources whose configured commands you are content for any registered
+  agent to trigger in its own working directory. No worker running means no dispatched execution.

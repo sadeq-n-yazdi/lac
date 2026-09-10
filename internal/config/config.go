@@ -65,6 +65,9 @@ type Config struct {
 	Operators []string `yaml:"operators"`
 	// Telegram is the optional bridge to a phone. Off unless configured.
 	Telegram TelegramConfig `yaml:"telegram"`
+	// WorkerCommands are the commands a shared worker may be asked to run, keyed by the name an
+	// agent asks for. A requester names a key; only this file says what the key runs.
+	WorkerCommands map[string]CommandConfig `yaml:"commands"`
 }
 
 // CapabilitiesConfig is the policy applied to every agent that is not an operator.
@@ -264,6 +267,9 @@ func (c Config) Validate() error {
 	}
 
 	if err := c.Telegram.validate(); err != nil {
+		return err
+	}
+	if err := c.validateCommands(); err != nil {
 		return err
 	}
 

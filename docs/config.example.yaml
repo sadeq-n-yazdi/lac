@@ -54,6 +54,15 @@ log_level: info
 #   - operator
 #   - telegram
 
+# Jobs a shared worker will run for other agents. An agent names the key; only this file says what
+# the key runs. Start a worker with: lac --name test-runner worker --resource test
+# commands:
+#   test:
+#     resource: test          # the worker holds a slot on this resource while it runs
+#     run: ["make", "test"]   # executed directly: no shell, no substitution
+#     description: the test suite
+#     time_limit: 20m
+
 # Resources defined at startup, so a fresh install already knows this machine's limits.
 resources:
   # The reason LAC exists: this laptop tolerates four concurrent test runs.

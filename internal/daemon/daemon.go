@@ -13,6 +13,7 @@ import (
 
 	"code.sadeq.uk/lac/internal/config"
 	"code.sadeq.uk/lac/internal/core"
+	"code.sadeq.uk/lac/internal/service/dispatch"
 	"code.sadeq.uk/lac/internal/service/leasing"
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
@@ -37,6 +38,7 @@ type Daemon struct {
 	messaging *messaging.Service
 	leasing   *leasing.Service
 	reporting *reporting.Service
+	dispatch  *dispatch.Service
 	notifier  *fanOutNotifier
 	telegram  *telegram.Bridge
 }

@@ -25,6 +25,7 @@ LAC solves those three problems and nothing else.
 | **Messaging**  | Direct and topic-based messages between registered agents, durable until acknowledged.               |
 | **Resources**  | Named resources with a fixed capacity (`test` = 4 slots, `reviewer` = 1) and a fair, ordered queue.  |
 | **Reporting**  | Broadcast a report request and collect every agent's answer in one place.                            |
+| **Dispatch**   | Hand a job to a shared worker, which runs the operator's configured command in your directory.       |
 | **Interfaces** | A CLI, an MCP server so AI tools discover it automatically, and an optional Telegram bot for you.    |
 
 The core primitive is a **lease**: an agent asks for a slot on a resource, waits its turn in the queue, gets the slot,
@@ -96,6 +97,7 @@ lac queue test                           # who is waiting, and for what
 lac send claude-b question 'are you touching the parser?'
 lac inbox --ack                          # read what was sent to you
 lac report "what are you working on?"    # ask every agent, and wait for the answers
+lac ask test                             # hand the job to the machine's shared worker
 ```
 
 There is no setup step: the first command registers this shell as an agent, named after the directory

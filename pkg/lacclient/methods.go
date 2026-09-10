@@ -452,3 +452,157 @@ func (c *Client) CollectReports(ctx context.Context, requestID string, wait bool
 
 	return result, err
 }
+
+// Task is a piece of work one agent asked a shared worker to do.
+type Task struct {
+	ID          string `json:"id"`
+	Command     string `json:"command"`
+	Resource    string `json:"resource"`
+	Workdir     string `json:"workdir"`
+	Requester   string `json:"requester"`
+	Worker      string `json:"worker"`
+	State       string `json:"state"`
+	ExitCode    int    `json:"exit_code"`
+	Output      string `json:"output"`
+	Failure     string `json:"failure"`
+	SubmittedAt string `json:"submitted_at"`
+	StartedAt   string `json:"started_at"`
+	FinishedAt  string `json:"finished_at"`
+}
+
+// Finished reports whether the task will not change again.
+func (t Task) Finished() bool {
+	switch t.State {
+	case "succeeded", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+// Command is something a shared worker on this machine can be asked to do. What it runs is the
+// operator's decision; a requester only ever names the key.
+type Command struct {
+	Key         string   `json:"key"`
+	Resource    string   `json:"resource"`
+	Description string   `json:"description"`
+	Run         []string `json:"run"`
+	TimeLimit   string   `json:"time_limit"`
+}
+
+// Commands lists what a shared worker can be asked for.
+func (c *Client) Commands(ctx context.Context) ([]Command, error) {
+	var result struct {
+		Commands []Command `json:"commands"`
+	}
+
+	err := c.Call(ctx, "task.commands", nil, &result)
+
+	return result.Commands, err
+}
+
+// SubmitTask asks a shared worker to run a configured command.
+//
+// An empty workdir means the caller's own. With wait set, the call returns when the work has
+// finished; without it, it returns as soon as the task is queued and the caller can follow it with
+// TaskStatus.
+func (c *Client) SubmitTask(
+	ctx context.Context, command, workdir string, wait bool, timeout time.Duration,
+) (Task, error) {
+	params := map[string]any{"command": command, "wait": wait}
+	if workdir != "" {
+		params["workdir"] = workdir
+	}
+	if timeout > 0 {
+		params["timeout"] = timeout.String()
+	}
+
+	var result struct {
+		Task Task `json:"task"`
+	}
+
+	err := c.Call(ctx, "task.submit", params, &result)
+
+	return result.Task, err
+}
+
+// ClaimedTask is work a worker has taken on, with the command the daemon says to run for it.
+type ClaimedTask struct {
+	Task Task `json:"task"`
+	// Run is the command to execute. It comes from the daemon's configuration; the requester had
+	// no say in it.
+	Run []string `json:"run"`
+	// TimeLimit is how long the command may take, as a duration string. Empty means no limit
+	// beyond the lease.
+	TimeLimit string `json:"time_limit"`
+}
+
+// ClaimTask waits for work on a resource. The caller must already hold the lease it names: that is
+// what keeps dispatched work inside the same capacity limit as everything else.
+func (c *Client) ClaimTask(ctx context.Context, resource, leaseID string) (ClaimedTask, error) {
+	var result ClaimedTask
+
+	err := c.Call(ctx, "task.claim",
+		map[string]any{"resource": resource, "lease_id": leaseID}, &result)
+
+	return result, err
+}
+
+// AppendTaskOutput reports what a running task has printed, so the requester sees progress.
+func (c *Client) AppendTaskOutput(ctx context.Context, taskID, chunk string) error {
+	return c.Call(ctx, "task.output", map[string]any{"task_id": taskID, "chunk": chunk}, nil)
+}
+
+// CompleteTask records the outcome of a task this worker ran.
+func (c *Client) CompleteTask(ctx context.Context, taskID string, exitCode int, failure string) (Task, error) {
+	params := map[string]any{"task_id": taskID, "exit_code": exitCode}
+	if failure != "" {
+		params["failure"] = failure
+	}
+
+	var result struct {
+		Task Task `json:"task"`
+	}
+
+	err := c.Call(ctx, "task.complete", params, &result)
+
+	return result.Task, err
+}
+
+// TaskStatus returns one task, optionally waiting for it to finish.
+func (c *Client) TaskStatus(ctx context.Context, taskID string, wait bool) (Task, error) {
+	var result struct {
+		Task Task `json:"task"`
+	}
+
+	err := c.Call(ctx, "task.status", map[string]any{"task_id": taskID, "wait": wait}, &result)
+
+	return result.Task, err
+}
+
+// CancelTask withdraws a task that has not started yet.
+func (c *Client) CancelTask(ctx context.Context, taskID string) (Task, error) {
+	var result struct {
+		Task Task `json:"task"`
+	}
+
+	err := c.Call(ctx, "task.cancel", map[string]any{"task_id": taskID}, &result)
+
+	return result.Task, err
+}
+
+// Tasks returns the caller's recent tasks, newest first.
+func (c *Client) Tasks(ctx context.Context, limit int) ([]Task, error) {
+	var result struct {
+		Tasks []Task `json:"tasks"`
+	}
+
+	params := map[string]any{}
+	if limit > 0 {
+		params["limit"] = limit
+	}
+
+	err := c.Call(ctx, "task.list", params, &result)
+
+	return result.Tasks, err
+}

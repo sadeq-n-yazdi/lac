@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Dispatch: `lac ask <job>` hands work to a shared worker (`lac worker --resource test`), which runs
+  it in the requester's own directory and streams the output back. A requester names a *configured
+  job*, never a command line, and a worker must hold a slot on the resource like anybody else.
 - A Telegram bridge, off unless configured: `/agents`, `/resources`, `/queue`, `/report`, `/say` and
   `/broadcast` from a phone, and a way for an agent to reach the operator when they are away. Gated
   by a chat-ID allowlist that cannot be disabled; outbound long polling only, no listener.

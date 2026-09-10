@@ -8,6 +8,7 @@ import (
 
 	"code.sadeq.uk/lac/internal/auth"
 	"code.sadeq.uk/lac/internal/core"
+	"code.sadeq.uk/lac/internal/service/dispatch"
 	"code.sadeq.uk/lac/internal/service/leasing"
 	"code.sadeq.uk/lac/internal/service/messaging"
 	"code.sadeq.uk/lac/internal/service/registry"
@@ -21,6 +22,8 @@ type API struct {
 	messaging     *messaging.Service
 	leasing       *leasing.Service
 	reporting     *reporting.Service
+	dispatch      *dispatch.Service
+	notifier      messaging.Notifier
 	authenticator *auth.Authenticator
 	logger        *slog.Logger
 }
@@ -29,6 +32,8 @@ type API struct {
 type Options struct {
 	// Logger defaults to slog.Default.
 	Logger *slog.Logger
+	// Notifier pushes task output to a waiting requester. Optional.
+	Notifier messaging.Notifier
 }
 
 // New returns an API over the given services.
@@ -37,6 +42,7 @@ func New(
 	messagingService *messaging.Service,
 	leasingService *leasing.Service,
 	reportingService *reporting.Service,
+	dispatchService *dispatch.Service,
 	authenticator *auth.Authenticator,
 	options Options,
 ) *API {
@@ -50,6 +56,8 @@ func New(
 		messaging:     messagingService,
 		leasing:       leasingService,
 		reporting:     reportingService,
+		dispatch:      dispatchService,
+		notifier:      options.Notifier,
 		authenticator: authenticator,
 		logger:        logger,
 	}
@@ -85,6 +93,15 @@ func (a *API) Register(router *jsonrpc.Router) {
 
 	router.Register("queue.status", a.authenticated(a.handleQueueStatus))
 	router.Register("queue.cancel", a.authenticated(a.handleQueueCancel))
+
+	router.Register("task.commands", a.authenticated(a.handleTaskCommands))
+	router.Register("task.submit", a.authenticated(a.handleTaskSubmit))
+	router.Register("task.claim", a.authenticated(a.handleTaskClaim))
+	router.Register("task.output", a.authenticated(a.handleTaskOutput))
+	router.Register("task.complete", a.authenticated(a.handleTaskComplete))
+	router.Register("task.status", a.authenticated(a.handleTaskStatus))
+	router.Register("task.cancel", a.authenticated(a.handleTaskCancel))
+	router.Register("task.list", a.authenticated(a.handleTaskList))
 
 	router.Register("report.request", a.authenticated(a.handleReportRequest))
 	router.Register("report.submit", a.authenticated(a.handleReportSubmit))

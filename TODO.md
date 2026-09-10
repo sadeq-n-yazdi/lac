@@ -47,9 +47,9 @@ and the discussion.
 
 ## Milestone 6 — Dispatch (worker agents)
 
-- [ ] `task.submit`, `task.claim`, `task.complete`
-- [ ] Worker mode: claim queued tasks under a lease and execute a configured command
-- [ ] Stream results back to the requester
+- [x] `task.submit`, `task.claim`, `task.complete`
+- [x] Worker mode: claim queued tasks under a lease and execute a configured command
+- [x] Stream results back to the requester
 
 ## Documentation
 
