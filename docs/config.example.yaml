@@ -1,0 +1,51 @@
+# Example LAC configuration.
+#
+# Copy to $XDG_CONFIG_HOME/lac/config.yaml (usually ~/.config/lac/config.yaml) and keep it at
+# mode 0600 — the daemon refuses to start if other users can read it, because this file may hold
+# secrets. Every key is optional; anything you leave out keeps its default.
+
+# Where the daemon listens. Default: $XDG_RUNTIME_DIR/lac/lacd.sock, falling back to
+# ~/.local/state/lac/run/lacd.sock. The whole path must be under 104 bytes.
+# socket_path: /Users/you/.local/state/lac/run/lacd.sock
+
+# Where state lives. Default: ~/.local/state/lac/lac.db
+# database_path: /Users/you/.local/state/lac/lac.db
+
+# The key used to hash agent tokens. Created on first start. Default: ~/.local/state/lac/secret.key
+# secret_path: /Users/you/.local/state/lac/secret.key
+
+# Directories an agent may claim as its working directory. An agent registering from anywhere else
+# is refused. Default: your home directory.
+# allowed_workdir_roots:
+#   - /Users/you/code
+
+# How long an agent may go without a heartbeat before it is treated as gone and everything it
+# holds is released. Default: 90s
+# agent_time_to_live: 90s
+
+# The lease expiry used by resources that do not set their own. Default: 15m
+# default_lease_time_to_live: 15m
+
+# How long in-flight calls have to finish when the daemon stops. Default: 5s
+# shutdown_grace: 5s
+
+# One of debug, info, warn, error. Default: info
+log_level: info
+
+# Resources defined at startup, so a fresh install already knows this machine's limits.
+resources:
+  # The reason LAC exists: this laptop tolerates four concurrent test runs.
+  - name: test
+    capacity: 4
+    description: concurrent test runs
+
+  # A single shared reviewer session that agents take turns with.
+  - name: reviewer
+    capacity: 1
+    lease_time_to_live: 30m
+    description: shared code review session
+
+  # A single advisor, for questions that need one considered answer rather than four.
+  - name: advisor
+    capacity: 1
+    description: shared architecture advisor

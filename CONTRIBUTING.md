@@ -14,7 +14,7 @@ usually a focused change with a test.
 
 ## Getting set up
 
-Requires Go 1.25 or newer.
+Requires Go 1.26 or newer.
 
 ```sh
 git clone https://github.com/sadeq-n-yazdi/lac.git

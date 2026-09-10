@@ -12,11 +12,11 @@ and the discussion.
 
 ## Milestone 1 — Daemon skeleton and storage
 
-- [ ] Configuration loading with XDG defaults and validation
-- [ ] SQLite store: embedded migrations, WAL mode, busy timeout, foreign keys
-- [ ] Domain types and repository interfaces in `internal/core`
-- [ ] Unix socket listener: permission hardening and peer-UID verification
-- [ ] JSON-RPC 2.0 codec, method router, graceful shutdown
+- [x] Configuration loading with XDG defaults and validation
+- [x] SQLite store: embedded migrations, WAL mode, busy timeout, foreign keys
+- [x] Domain types and repository interfaces in `internal/core`
+- [x] Unix socket listener: permission hardening and peer-UID verification
+- [x] JSON-RPC 2.0 codec, method router, graceful shutdown
 
 ## Milestone 2 — Registry, messaging, leases and CLI
 

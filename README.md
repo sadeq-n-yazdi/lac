@@ -67,7 +67,7 @@ Early development. See [TODO.md](TODO.md) for the milestone plan and the
 
 ## Install
 
-Requires Go 1.25 or newer. There is no cgo dependency — the SQLite driver is pure Go.
+Requires Go 1.26 or newer. There is no cgo dependency — the SQLite driver is pure Go.
 
 ```sh
 go install code.sadeq.uk/lac/cmd/lacd@latest
