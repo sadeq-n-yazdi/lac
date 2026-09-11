@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"sadeq.uk/lac/internal/auth"
 	"sadeq.uk/lac/internal/core"
@@ -166,6 +167,90 @@ func (a *API) handleUnsubscribe(
 	}
 
 	return TopicResult(arguments), nil
+}
+
+// LogParams narrows the operator's view of the traffic between agents.
+type LogParams struct {
+	// Agent, when set, keeps only what this agent sent or was sent. It is a name, as a person says
+	// it, rather than an id.
+	Agent string `json:"agent,omitempty"`
+	// Topic, when set, keeps only messages published to that topic.
+	Topic string `json:"topic,omitempty"`
+	// Since, when set, keeps only messages at or after this time, as RFC 3339.
+	Since string `json:"since,omitempty"`
+	// Limit caps how many are returned, most recent first.
+	Limit int `json:"limit,omitempty"`
+}
+
+// LogResult is the traffic, most recent first.
+type LogResult struct {
+	Messages []LoggedMessageView `json:"messages"`
+}
+
+func (a *API) handleLog(
+	ctx context.Context, caller core.Agent, _ *jsonrpc.Session, params json.RawMessage,
+) (any, error) {
+	var arguments LogParams
+	if err := jsonrpc.ParseParams(params, &arguments); err != nil {
+		return nil, err
+	}
+
+	// Reading what every agent has said to every other is an operator's power. An ordinary agent
+	// gets its own inbox and nothing else.
+	if err := a.authenticator.Authorise(ctx, caller, auth.PermissionReadLog, ""); err != nil {
+		return nil, fmt.Errorf("%w; reading everyone's messages is an operator's power, and your "+
+			"own inbox is message.inbox", err)
+	}
+
+	filter := core.MessageFilter{Topic: arguments.Topic, Limit: arguments.Limit}
+
+	// The caller names an agent the way a person does; the store works in ids.
+	if arguments.Agent != "" {
+		agent, err := a.registry.ByName(ctx, arguments.Agent)
+		if err != nil {
+			return nil, err
+		}
+		filter.AgentID = agent.ID
+	}
+
+	if arguments.Since != "" {
+		since, err := time.Parse(time.RFC3339, arguments.Since)
+		if err != nil {
+			return nil, fmt.Errorf("%w: since must be an RFC 3339 time, such as "+
+				"2026-09-11T09:00:00Z: %w", core.ErrInvalidArgument, err)
+		}
+		filter.Since = since
+	}
+
+	records, err := a.messaging.Log(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	views := make([]LoggedMessageView, 0, len(records))
+	for _, record := range records {
+		views = append(views, a.viewOfRecord(ctx, record))
+	}
+
+	return LogResult{Messages: views}, nil
+}
+
+func (a *API) viewOfRecord(ctx context.Context, record core.MessageRecord) LoggedMessageView {
+	recipients := make([]string, 0, len(record.RecipientIDs))
+	for _, recipientID := range record.RecipientIDs {
+		name := a.nameOf(ctx, recipientID)
+		if name == "" {
+			name = recipientID
+		}
+		recipients = append(recipients, name)
+	}
+
+	return LoggedMessageView{
+		Message:      viewOfMessage(record.Message, a.nameOf(ctx, record.Message.FromAgentID)),
+		Recipients:   recipients,
+		Delivered:    record.DeliveredCount,
+		Acknowledged: record.AcknowledgedCount,
+	}
 }
 
 // nameOf resolves an agent id to its name for display. A message from an agent that has since gone

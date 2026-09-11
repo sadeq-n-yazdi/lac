@@ -116,11 +116,18 @@ to see the history.
 | `message.send`       | exactly one of `to` / `topic`, plus `kind`, `body` | `{message_id, recipients, notified}` |
 | `message.inbox`      | `limit` (optional)                          | `{messages[]}`                       |
 | `message.ack`        | `message_ids[]`                             | `{acknowledged}`                     |
+| `message.log`        | `agent`, `topic`, `since`, `limit` (all optional) | `{messages[]}`                 |
 | `message.subscribe`  | `topic`                                     | `{topic}`                            |
 | `message.unsubscribe`| `topic`                                     | `{topic}`                            |
 
 `to` is an agent **name**; `body` is any JSON object. The topic `all` reaches every live agent and
 needs the broadcast capability.
+
+`message.log` is the operator's view rather than an agent's: it returns traffic between *other*
+agents, with how many recipients have read and acknowledged each message, and it needs the
+`can_read_log` capability. An ordinary agent reads its own inbox and nothing else. A message that
+every recipient acknowledged stays readable here for `message_retention` (a day by default) before
+it is pruned.
 
 Reading is not acknowledging: a message comes back from `message.inbox` until `message.ack` clears
 it, which is what makes delivery survive an agent that crashes mid-task. Acknowledging a message

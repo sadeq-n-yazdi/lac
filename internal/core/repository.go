@@ -90,8 +90,13 @@ type MessageRepository interface {
 	// Acknowledge marks deliveries complete and returns how many it changed. Acknowledging a
 	// message addressed to another agent must not change anything.
 	Acknowledge(ctx context.Context, agentID string, messageIDs []string, at time.Time) (int, error)
-	// PruneExpired removes fully acknowledged messages and any that passed their expiry.
-	PruneExpired(ctx context.Context, at time.Time) (int, error)
+	// List returns messages regardless of who they were addressed to, most recent first. It is the
+	// operator's view of the traffic, and nothing but an operator-gated call should reach it.
+	List(ctx context.Context, filter MessageFilter) ([]MessageRecord, error)
+	// PruneExpired removes messages that passed their expiry, and acknowledged messages older than
+	// the retention period. Acknowledged traffic is kept for a while on purpose: deleting it the
+	// instant it was handled would empty the log of exactly the conversations that went well.
+	PruneExpired(ctx context.Context, at time.Time, retention time.Duration) (int, error)
 
 	// Subscribe adds an agent to a topic. Subscribing twice is not an error.
 	Subscribe(ctx context.Context, agentID, topic string) error

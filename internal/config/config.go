@@ -34,6 +34,10 @@ const (
 	// DefaultRestartDelay is how often the daemon looks at its configuration file, and the unit it
 	// counts quiet in before reloading a change.
 	DefaultRestartDelay = 5 * time.Second
+	// DefaultMessageRetention is how long an acknowledged message stays readable in the operator's
+	// log. A day is long enough to answer "what were they saying to each other this morning?"
+	// without letting the database grow without end.
+	DefaultMessageRetention = 24 * time.Hour
 )
 
 // Config is the daemon's complete, validated configuration.
@@ -59,6 +63,9 @@ type Config struct {
 	// daemon waits for before applying a change: a change is reloaded once the file has read the
 	// same three times running, which is three restart delays after the last edit.
 	RestartDelay Duration `yaml:"restart_delay"`
+	// MessageRetention is how long a message that every recipient acknowledged is kept, so that
+	// `lac log` can still show it. Unacknowledged messages are kept regardless, until they expire.
+	MessageRetention Duration `yaml:"message_retention"`
 	// LogLevel is one of debug, info, warn or error.
 	LogLevel string `yaml:"log_level"`
 	// Resources are defined at startup, so a fresh install already knows about the machine's
@@ -89,6 +96,8 @@ type CapabilitiesConfig struct {
 	CanDefineResources bool `yaml:"can_define_resources"`
 	// CanRequestReports allows asking every other agent to report. Off for ordinary agents.
 	CanRequestReports bool `yaml:"can_request_reports"`
+	// CanReadLog allows reading the traffic between other agents. Off for ordinary agents.
+	CanReadLog bool `yaml:"can_read_log"`
 }
 
 // CapabilitiesFor returns what an agent registering under this name is allowed to do.
@@ -101,6 +110,7 @@ func (c Config) CapabilitiesFor(agentName string) core.Capabilities {
 		CanBroadcast:       c.Capabilities.CanBroadcast,
 		CanDefineResources: c.Capabilities.CanDefineResources,
 		CanRequestReports:  c.Capabilities.CanRequestReports,
+		CanReadLog:         c.Capabilities.CanReadLog,
 	}
 
 	if slices.Contains(c.Operators, agentName) {
@@ -108,6 +118,7 @@ func (c Config) CapabilitiesFor(agentName string) core.Capabilities {
 		capabilities.CanBroadcast = true
 		capabilities.CanDefineResources = true
 		capabilities.CanRequestReports = true
+		capabilities.CanReadLog = true
 	}
 
 	return capabilities
@@ -172,6 +183,7 @@ func defaults(paths Paths) Config {
 		DatabasePath:           filepath.Join(paths.StateDir, "lac.db"),
 		SecretPath:             filepath.Join(paths.StateDir, "secret.key"),
 		AgentTimeToLive:        Duration(DefaultAgentTimeToLive),
+		MessageRetention:       Duration(DefaultMessageRetention),
 		DefaultLeaseTimeToLive: Duration(DefaultLeaseTimeToLive),
 		ShutdownGrace:          Duration(DefaultShutdownGrace),
 		RestartDelay:           Duration(DefaultRestartDelay),

@@ -182,6 +182,54 @@ func (c *Client) Inbox(ctx context.Context, limit int) ([]Message, error) {
 	return result.Messages, err
 }
 
+// LoggedMessage is a message as the operator's log shows it, with how far it got.
+type LoggedMessage struct {
+	Message      Message  `json:"message"`
+	Recipients   []string `json:"recipients"`
+	Delivered    int      `json:"delivered"`
+	Acknowledged int      `json:"acknowledged"`
+}
+
+// LogFilter narrows the log. The zero value asks for the most recent traffic of any kind.
+type LogFilter struct {
+	// Agent, when set, keeps only what that agent sent or was sent, by name.
+	Agent string
+	// Topic, when set, keeps only messages published to that topic.
+	Topic string
+	// Since, when set, keeps only messages at or after this time, as RFC 3339.
+	Since string
+	// Limit caps how many come back, most recent first.
+	Limit int
+}
+
+// MessageLog returns the traffic between agents, most recent first.
+//
+// It needs the same operator standing as asking everyone for a report: an ordinary agent may read
+// its own inbox and nothing else.
+func (c *Client) MessageLog(ctx context.Context, filter LogFilter) ([]LoggedMessage, error) {
+	var result struct {
+		Messages []LoggedMessage `json:"messages"`
+	}
+
+	params := map[string]any{}
+	if filter.Agent != "" {
+		params["agent"] = filter.Agent
+	}
+	if filter.Topic != "" {
+		params["topic"] = filter.Topic
+	}
+	if filter.Since != "" {
+		params["since"] = filter.Since
+	}
+	if filter.Limit > 0 {
+		params["limit"] = filter.Limit
+	}
+
+	err := c.Call(ctx, "message.log", params, &result)
+
+	return result.Messages, err
+}
+
 // Acknowledge confirms messages have been dealt with, and reports how many were cleared.
 func (c *Client) Acknowledge(ctx context.Context, messageIDs ...string) (int, error) {
 	var result struct {

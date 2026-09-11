@@ -57,6 +57,35 @@ func (m Message) Validate() error {
 	return nil
 }
 
+// MessageFilter narrows the operator's view of what agents have said to each other. The zero value
+// matches everything.
+type MessageFilter struct {
+	// AgentID, when set, keeps only messages this agent sent or was addressed to. An operator
+	// asking "what has this agent been saying" means both halves of the conversation.
+	AgentID string
+	// Topic, when set, keeps only messages published to that topic.
+	Topic string
+	// Since, when non-zero, keeps only messages sent at or after this instant.
+	Since time.Time
+	// Limit caps how many are returned, most recent first. Zero means the store's default.
+	Limit int
+}
+
+// MessageRecord is a message as the log shows it: what was said, and how far it got.
+//
+// The counts matter as much as the text. A message every recipient acknowledged was acted on; one
+// sitting delivered but unacknowledged says the recipient saw it and moved on; one never delivered
+// at all says the recipient has not looked since it arrived.
+type MessageRecord struct {
+	Message Message
+	// RecipientIDs is every agent the message was addressed to, in delivery order.
+	RecipientIDs []string
+	// DeliveredCount is how many recipients have read it, AcknowledgedCount how many have
+	// acknowledged it. Both are at most len(RecipientIDs).
+	DeliveredCount    int
+	AcknowledgedCount int
+}
+
 // Delivery is one recipient's copy of a message. A message is retained until every delivery is
 // acknowledged, so an agent that restarts still receives what it missed.
 type Delivery struct {
