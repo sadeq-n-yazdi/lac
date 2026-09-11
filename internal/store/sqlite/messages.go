@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"sadeq.uk/lac/internal/core"
@@ -18,6 +19,10 @@ const messageColumns = `id, from_agent_id, to_agent_id, topic, kind, body, creat
 // defaultInboxLimit caps a Pending call that does not ask for a limit, so one very behind agent
 // cannot pull its entire history into memory in a single call.
 const defaultInboxLimit = 100
+
+// defaultLogLimit caps a log listing that does not ask for one. The log is read by a person, and a
+// screenful of the most recent traffic is what they usually want.
+const defaultLogLimit = 50
 
 // Append stores the message and one pending delivery per recipient. The caller is expected to be
 // inside a transaction; the message and its deliveries must never exist without each other.
@@ -140,16 +145,115 @@ func (r messageRepository) Acknowledge(
 	return int(affected), nil
 }
 
-// PruneExpired removes messages nobody is waiting for any more: those every recipient has
-// acknowledged, and those that passed their expiry.
-func (r messageRepository) PruneExpired(ctx context.Context, at time.Time) (int, error) {
+// List returns the traffic between agents, most recent first, with how far each message got.
+//
+// Unlike Pending, this is not scoped to one recipient: it is the operator's view, and the caller is
+// responsible for having checked that the caller may see it.
+func (r messageRepository) List(ctx context.Context, filter core.MessageFilter) ([]core.MessageRecord, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = defaultLogLimit
+	}
+
+	query := `
+		SELECT ` + prefixed("m", messageColumns) + `,
+		       COUNT(d.delivered_at),
+		       COUNT(d.acked_at),
+		       COALESCE(GROUP_CONCAT(d.agent_id, char(31)), '')
+		  FROM messages m
+		  LEFT JOIN deliveries d ON d.message_id = m.id
+		 WHERE 1 = 1`
+	arguments := make([]any, 0, 4)
+
+	if filter.AgentID != "" {
+		// Either half of the conversation: what this agent said, and what was said to it.
+		query += ` AND (m.from_agent_id = ? OR EXISTS (
+		        SELECT 1 FROM deliveries dd WHERE dd.message_id = m.id AND dd.agent_id = ?))`
+		arguments = append(arguments, filter.AgentID, filter.AgentID)
+	}
+	if filter.Topic != "" {
+		query += ` AND m.topic = ?`
+		arguments = append(arguments, filter.Topic)
+	}
+	if !filter.Since.IsZero() {
+		query += ` AND m.created_at >= ?`
+		arguments = append(arguments, requireMicros(filter.Since))
+	}
+
+	query += ` GROUP BY m.id ORDER BY m.created_at DESC, m.id DESC LIMIT ?`
+	arguments = append(arguments, limit)
+
+	rows, err := r.queries.QueryContext(ctx, query, arguments...)
+	if err != nil {
+		return nil, translateError("reading the message log", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	records := make([]core.MessageRecord, 0, 16)
+	for rows.Next() {
+		record, err := scanMessageRecord(rows)
+		if err != nil {
+			return nil, translateError("reading the message log", err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, translateError("reading the message log", err)
+	}
+
+	return records, nil
+}
+
+func scanMessageRecord(rows *sql.Rows) (core.MessageRecord, error) {
+	var (
+		record    core.MessageRecord
+		toAgentID sql.NullString
+		topic     sql.NullString
+		createdAt int64
+		expiresAt sql.NullInt64
+		delivered int
+		acked     int
+		agentIDs  string
+	)
+
+	if err := rows.Scan(&record.Message.ID, &record.Message.FromAgentID, &toAgentID, &topic,
+		&record.Message.Kind, &record.Message.Body, &createdAt, &expiresAt,
+		&delivered, &acked, &agentIDs); err != nil {
+		return core.MessageRecord{}, err
+	}
+
+	record.Message.ToAgentID = toAgentID.String
+	record.Message.Topic = topic.String
+	record.Message.CreatedAt = fromRequiredMicros(createdAt)
+	record.Message.ExpiresAt = fromMicros(expiresAt)
+	record.DeliveredCount = delivered
+	record.AcknowledgedCount = acked
+
+	if agentIDs != "" {
+		// Unit separator rather than a comma: an agent id never contains one, so this cannot be
+		// confused by an id that does.
+		record.RecipientIDs = strings.Split(agentIDs, "\x1f")
+	}
+
+	return record, nil
+}
+
+// PruneExpired removes messages nobody is waiting for any more: those that passed their expiry, and
+// those every recipient acknowledged longer ago than the retention period.
+//
+// Acknowledged messages are kept for that period rather than deleted on the spot, so the operator's
+// log still shows the conversations that were handled properly. A retention of zero keeps the old
+// behaviour of deleting them as soon as they are acknowledged.
+func (r messageRepository) PruneExpired(
+	ctx context.Context, at time.Time, retention time.Duration,
+) (int, error) {
 	result, err := r.queries.ExecContext(ctx, `
 		DELETE FROM messages
 		 WHERE (expires_at IS NOT NULL AND expires_at <= ?)
-		    OR NOT EXISTS (
+		    OR (created_at <= ? AND NOT EXISTS (
 		        SELECT 1 FROM deliveries d WHERE d.message_id = messages.id AND d.acked_at IS NULL
-		    )`,
-		requireMicros(at),
+		    ))`,
+		requireMicros(at), requireMicros(at.Add(-retention)),
 	)
 	if err != nil {
 		return 0, translateError("pruning messages", err)

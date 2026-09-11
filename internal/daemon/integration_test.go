@@ -523,6 +523,55 @@ func TestOnlyOperatorsMayAskForReports(t *testing.T) {
 	}
 }
 
+// An operator can read what the agents have been saying to each other, which is how a person finds
+// out whether two sessions are about to collide. An ordinary agent gets its own inbox and no more.
+func TestTheOperatorCanReadTheTrafficBetweenAgents(t *testing.T) {
+	subject := startDaemon(t, nil)
+
+	first := subject.connect(t, "claude-a")
+	second := subject.connect(t, "claude-b")
+
+	if _, err := first.SendTo(t.Context(), "claude-b", "status", map[string]string{"text": "taking the slot"}); err != nil {
+		t.Fatalf("Send() = %v, want nil", err)
+	}
+	if _, err := second.SendTo(t.Context(), "claude-a", "status", map[string]string{"text": "understood"}); err != nil {
+		t.Fatalf("Send() = %v, want nil", err)
+	}
+
+	// Neither message was addressed to the operator, which is the point: a log that only showed
+	// your own post would tell you nothing about what the others are doing.
+	operator := subject.connect(t, "operator")
+
+	messages, err := operator.MessageLog(t.Context(), lacclient.LogFilter{})
+	if err != nil {
+		t.Fatalf("MessageLog() = %v, want nil", err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("MessageLog() returned %d messages, want both halves of a conversation "+
+			"the operator was not part of", len(messages))
+	}
+	if messages[0].Message.FromName != "claude-b" {
+		t.Errorf("the most recent message is from %q, want claude-b", messages[0].Message.FromName)
+	}
+	if len(messages[0].Recipients) != 1 || messages[0].Recipients[0] != "claude-a" {
+		t.Errorf("recipients = %v, want claude-a by name", messages[0].Recipients)
+	}
+
+	// Narrowing to one agent keeps both halves of its conversation.
+	ownTraffic, err := operator.MessageLog(t.Context(), lacclient.LogFilter{Agent: "claude-b"})
+	if err != nil {
+		t.Fatalf("MessageLog(agent) = %v, want nil", err)
+	}
+	if len(ownTraffic) != 2 {
+		t.Errorf("MessageLog(agent) returned %d messages, want what it sent and what it was sent",
+			len(ownTraffic))
+	}
+
+	if _, err := first.MessageLog(t.Context(), lacclient.LogFilter{}); lacclient.ErrorCode(err) != lacclient.CodeUnauthorised {
+		t.Errorf("MessageLog() by an ordinary agent = %v, want CodeUnauthorised", err)
+	}
+}
+
 // waitForReportRequest reads the agent's inbox until the operator's question turns up, and returns
 // the request id it must answer with.
 func waitForReportRequest(t *testing.T, client *lacclient.Client) string {

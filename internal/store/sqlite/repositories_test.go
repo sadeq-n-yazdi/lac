@@ -231,6 +231,142 @@ func TestMessagesStayPendingUntilAcknowledged(t *testing.T) {
 	}
 }
 
+// The operator's log is the whole conversation, not one agent's inbox: it shows messages between
+// other agents, and says how far each of them got.
+func TestTheLogShowsTrafficBetweenOtherAgents(t *testing.T) {
+	store := openStore(t)
+	sender := newAgent(t, store, "claude-a")
+	recipient := newAgent(t, store, "claude-b")
+
+	first := core.Message{
+		ID: id.New("msg"), FromAgentID: sender.ID, ToAgentID: recipient.ID,
+		Kind: "status", Body: []byte(`{"text":"taking the test slot"}`), CreatedAt: baseTime,
+	}
+	second := core.Message{
+		ID: id.New("msg"), FromAgentID: recipient.ID, ToAgentID: sender.ID,
+		Kind: "status", Body: []byte(`{"text":"understood"}`), CreatedAt: baseTime.Add(time.Minute),
+	}
+	for _, message := range []core.Message{first, second} {
+		recipients := []string{message.ToAgentID}
+		if err := store.Messages().Append(t.Context(), message, recipients); err != nil {
+			t.Fatalf("Append() = %v, want nil", err)
+		}
+	}
+
+	// The first one was read but not acknowledged, which is exactly the state an operator wants to
+	// be able to see: somebody looked at it and did not finish with it.
+	if err := store.Messages().MarkDelivered(
+		t.Context(), recipient.ID, []string{first.ID}, baseTime,
+	); err != nil {
+		t.Fatalf("MarkDelivered() = %v, want nil", err)
+	}
+
+	records, err := store.Messages().List(t.Context(), core.MessageFilter{})
+	if err != nil {
+		t.Fatalf("List() = %v, want nil", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("List() returned %d messages, want both halves of the conversation", len(records))
+	}
+
+	// Most recent first.
+	if records[0].Message.ID != second.ID {
+		t.Errorf("List() put %q first, want the most recent message", records[0].Message.ID)
+	}
+
+	newest, oldest := records[0], records[1]
+	if len(oldest.RecipientIDs) != 1 || oldest.RecipientIDs[0] != recipient.ID {
+		t.Errorf("recipients = %v, want %q", oldest.RecipientIDs, recipient.ID)
+	}
+	if oldest.DeliveredCount != 1 || oldest.AcknowledgedCount != 0 {
+		t.Errorf("the read-but-unacknowledged message reports %d delivered and %d acknowledged, want 1 and 0",
+			oldest.DeliveredCount, oldest.AcknowledgedCount)
+	}
+	if newest.DeliveredCount != 0 {
+		t.Errorf("the unread message reports %d delivered, want 0", newest.DeliveredCount)
+	}
+}
+
+// Asking about one agent means both halves of its conversations: what it said, and what was said to
+// it. Anything else would show half a dialogue.
+func TestTheLogForOneAgentIncludesWhatWasSaidToIt(t *testing.T) {
+	store := openStore(t)
+	sender := newAgent(t, store, "claude-a")
+	recipient := newAgent(t, store, "claude-b")
+	stranger := newAgent(t, store, "claude-c")
+
+	toRecipient := core.Message{
+		ID: id.New("msg"), FromAgentID: sender.ID, ToAgentID: recipient.ID,
+		Kind: "status", Body: []byte(`{"text":"for you"}`), CreatedAt: baseTime,
+	}
+	elsewhere := core.Message{
+		ID: id.New("msg"), FromAgentID: sender.ID, ToAgentID: stranger.ID,
+		Kind: "status", Body: []byte(`{"text":"not for you"}`), CreatedAt: baseTime.Add(time.Minute),
+	}
+	for _, message := range []core.Message{toRecipient, elsewhere} {
+		if err := store.Messages().Append(t.Context(), message, []string{message.ToAgentID}); err != nil {
+			t.Fatalf("Append() = %v, want nil", err)
+		}
+	}
+
+	records, err := store.Messages().List(t.Context(), core.MessageFilter{AgentID: recipient.ID})
+	if err != nil {
+		t.Fatalf("List() = %v, want nil", err)
+	}
+	if len(records) != 1 || records[0].Message.ID != toRecipient.ID {
+		t.Fatalf("List(agent) returned %d messages, want only the one addressed to that agent", len(records))
+	}
+}
+
+// Deleting a message the moment it was acknowledged would empty the log of exactly the
+// conversations that went well. It is kept for the retention period instead.
+func TestAnAcknowledgedMessageIsKeptForTheRetentionPeriod(t *testing.T) {
+	store := openStore(t)
+	sender := newAgent(t, store, "claude-a")
+	recipient := newAgent(t, store, "claude-b")
+
+	message := core.Message{
+		ID: id.New("msg"), FromAgentID: sender.ID, ToAgentID: recipient.ID,
+		Kind: "status", Body: []byte(`{"text":"done"}`), CreatedAt: baseTime,
+	}
+	if err := store.Messages().Append(t.Context(), message, []string{recipient.ID}); err != nil {
+		t.Fatalf("Append() = %v, want nil", err)
+	}
+	if _, err := store.Messages().Acknowledge(
+		t.Context(), recipient.ID, []string{message.ID}, baseTime,
+	); err != nil {
+		t.Fatalf("Acknowledge() = %v, want nil", err)
+	}
+
+	const retention = time.Hour
+
+	// An hour has not passed, so it is still readable.
+	pruned, err := store.Messages().PruneExpired(t.Context(), baseTime.Add(time.Minute), retention)
+	if err != nil {
+		t.Fatalf("PruneExpired() = %v, want nil", err)
+	}
+	if pruned != 0 {
+		t.Errorf("PruneExpired() removed %d messages a minute after acknowledgement, want 0", pruned)
+	}
+
+	records, err := store.Messages().List(t.Context(), core.MessageFilter{})
+	if err != nil || len(records) != 1 {
+		t.Fatalf("List() returned %d messages (%v), want the acknowledged one", len(records), err)
+	}
+	if records[0].AcknowledgedCount != 1 {
+		t.Errorf("acknowledged count = %d, want 1", records[0].AcknowledgedCount)
+	}
+
+	// Once the retention period has passed it goes, so the database does not grow without end.
+	pruned, err = store.Messages().PruneExpired(t.Context(), baseTime.Add(2*retention), retention)
+	if err != nil {
+		t.Fatalf("PruneExpired() = %v, want nil", err)
+	}
+	if pruned != 1 {
+		t.Errorf("PruneExpired() removed %d messages after the retention period, want 1", pruned)
+	}
+}
+
 // One agent must not be able to clear another agent's inbox.
 func TestAcknowledgeIgnoresSomebodyElsesMessages(t *testing.T) {
 	store := openStore(t)
@@ -316,7 +452,8 @@ func TestPruneExpired(t *testing.T) {
 		t.Fatalf("Acknowledge() = %v, want nil", err)
 	}
 
-	pruned, err := store.Messages().PruneExpired(t.Context(), baseTime.Add(time.Hour))
+	// Retention zero: acknowledged messages go as soon as they are acknowledged.
+	pruned, err := store.Messages().PruneExpired(t.Context(), baseTime.Add(time.Hour), 0)
 	if err != nil {
 		t.Fatalf("PruneExpired() = %v, want nil", err)
 	}

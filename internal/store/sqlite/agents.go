@@ -24,6 +24,7 @@ type storedCapabilities struct {
 	CanBroadcast       bool     `json:"can_broadcast"`
 	CanDefineResources bool     `json:"can_define_resources"`
 	CanRequestReports  bool     `json:"can_request_reports"`
+	CanReadLog         bool     `json:"can_read_log"`
 }
 
 func encodeCapabilities(capabilities core.Capabilities) (string, error) {
@@ -32,6 +33,7 @@ func encodeCapabilities(capabilities core.Capabilities) (string, error) {
 		CanBroadcast:       capabilities.CanBroadcast,
 		CanDefineResources: capabilities.CanDefineResources,
 		CanRequestReports:  capabilities.CanRequestReports,
+		CanReadLog:         capabilities.CanReadLog,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encoding capabilities: %w", err)
@@ -51,6 +53,7 @@ func decodeCapabilities(encoded string) (core.Capabilities, error) {
 		CanBroadcast:       stored.CanBroadcast,
 		CanDefineResources: stored.CanDefineResources,
 		CanRequestReports:  stored.CanRequestReports,
+		CanReadLog:         stored.CanReadLog,
 	}, nil
 }
 

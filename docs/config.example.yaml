@@ -34,6 +34,10 @@
 # delays after the last edit. `kill -HUP` reloads it at once instead. Default: 5s
 # restart_delay: 5s
 
+# How long a message that every recipient acknowledged is kept, so `lac log` can still show it.
+# Unacknowledged messages are kept regardless until they expire. Default: 24h
+# message_retention: 24h
+
 # One of debug, info, warn, error. Default: info
 log_level: info
 
@@ -52,6 +56,7 @@ log_level: info
 #   can_broadcast: true
 #   can_define_resources: false
 #   can_request_reports: false
+#   can_read_log: false        # reading the traffic between other agents
 
 # Agent names that may also define resources and ask everyone for a report — your own tools, not
 # the AI sessions. Default: operator, telegram

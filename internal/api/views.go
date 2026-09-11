@@ -98,6 +98,18 @@ func viewOfMessage(message core.Message, senderName string) MessageView {
 	}
 }
 
+// LoggedMessageView is a message as the operator's log shows it: what was said, to whom, and how
+// far it got. The counts are what turn a list of messages into an account of whether anybody acted
+// on them.
+type LoggedMessageView struct {
+	Message MessageView `json:"message"`
+	// Recipients are the agents it was addressed to, by name where the agent still exists.
+	Recipients []string `json:"recipients"`
+	// Delivered is how many recipients have read it, Acknowledged how many have finished with it.
+	Delivered    int `json:"delivered"`
+	Acknowledged int `json:"acknowledged"`
+}
+
 // ResourceView is a resource and how busy it is.
 type ResourceView struct {
 	Name            string `json:"name"`

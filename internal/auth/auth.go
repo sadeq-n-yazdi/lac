@@ -24,6 +24,8 @@ const (
 	PermissionDefineResource Permission = "define_resource"
 	// PermissionRequestReports is asking the other agents to report. An operator power.
 	PermissionRequestReports Permission = "request_reports"
+	// PermissionReadLog is reading the traffic between other agents. An operator power.
+	PermissionReadLog Permission = "read_the_message_log"
 )
 
 // Clock returns the current time. Tests replace it; production leaves it alone.
@@ -173,6 +175,8 @@ func (a *Authenticator) permitted(agent core.Agent, permission Permission, targe
 		return agent.Capabilities.CanDefineResources
 	case PermissionRequestReports:
 		return agent.Capabilities.CanRequestReports
+	case PermissionReadLog:
+		return agent.Capabilities.CanReadLog
 	default:
 		// An unknown permission is denied: a typo in a new call site must not grant anything.
 		return false

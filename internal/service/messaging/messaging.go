@@ -32,6 +32,9 @@ type Notifier interface {
 type Options struct {
 	// DefaultTimeToLive is how long an unacknowledged message is kept. Zero means forever.
 	DefaultTimeToLive time.Duration
+	// Retention is how long an acknowledged message is kept so that it still shows in the
+	// operator's log. Zero deletes it as soon as every recipient has acknowledged it.
+	Retention time.Duration
 	// Notifier pushes arrivals to connected recipients. Optional: without one, messages are still
 	// delivered, just only when the recipient next looks.
 	Notifier Notifier
@@ -239,9 +242,17 @@ func (s *Service) Unsubscribe(ctx context.Context, agentID, topic string) error 
 	return s.store.Messages().Unsubscribe(ctx, agentID, topic)
 }
 
+// Log returns the traffic between agents, most recent first.
+//
+// This is the operator's view and deliberately ignores who is asking: the caller must have checked
+// that they are allowed to see everyone's messages before getting here.
+func (s *Service) Log(ctx context.Context, filter core.MessageFilter) ([]core.MessageRecord, error) {
+	return s.store.Messages().List(ctx, filter)
+}
+
 // Prune removes messages nobody is waiting for any more.
 func (s *Service) Prune(ctx context.Context) (int, error) {
-	removed, err := s.store.Messages().PruneExpired(ctx, s.now())
+	removed, err := s.store.Messages().PruneExpired(ctx, s.now(), s.options.Retention)
 	if err != nil {
 		return 0, err
 	}

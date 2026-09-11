@@ -49,6 +49,9 @@ type Capabilities struct {
 	CanDefineResources bool
 	// CanRequestReports allows asking the other agents to report. This is an operator power.
 	CanRequestReports bool
+	// CanReadLog allows reading every agent's traffic, not only your own inbox. An operator power:
+	// it is the difference between hearing what was said to you and reading everyone's post.
+	CanReadLog bool
 }
 
 // WildcardResource grants access to every resource when it appears in Capabilities.Resources.

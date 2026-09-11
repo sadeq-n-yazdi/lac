@@ -99,6 +99,7 @@ lac agents                               # who is working right now
 lac queue test                           # who is waiting, and for what
 lac send claude-b question 'are you touching the parser?'
 lac inbox --ack                          # read what was sent to you
+lac log --follow                         # watch what the agents say to each other (operators)
 lac report "what are you working on?"    # ask every agent, and wait for the answers
 lac ask test                             # hand the job to the machine's shared worker
 lac pr watch sadeq-n-yazdi/lac#31        # and hear when its CI finishes

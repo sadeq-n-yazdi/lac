@@ -91,6 +91,7 @@ func (a *API) Register(router *jsonrpc.Router) {
 	router.Register("message.send", a.authenticated(a.handleSend))
 	router.Register("message.inbox", a.authenticated(a.handleInbox))
 	router.Register("message.ack", a.authenticated(a.handleAcknowledge))
+	router.Register("message.log", a.authenticated(a.handleLog))
 	router.Register("message.subscribe", a.authenticated(a.handleSubscribe))
 	router.Register("message.unsubscribe", a.authenticated(a.handleUnsubscribe))
 

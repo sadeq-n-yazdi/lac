@@ -22,6 +22,7 @@ func commands() []command {
 		{name: "agents", summary: "who is connected right now", run: runAgents},
 		{name: "send", summary: "send a message to an agent or a topic", run: runSend},
 		{name: "inbox", summary: "read the messages waiting for you", run: runInbox},
+		{name: "log", summary: "everything the agents have said to each other (operators only)", run: runLog},
 		{name: "resources", summary: "the shared resources on this machine", run: runResources},
 		{name: "define", summary: "create or reconfigure a resource (operators only)", run: runDefine},
 		{name: "reload", summary: "make the daemon re-read its configuration now", run: runReload},
@@ -288,6 +289,180 @@ func runInbox(ctx context.Context, env *environment, arguments []string) error {
 	}
 
 	return nil
+}
+
+// runLog shows the traffic between agents: who said what to whom, and whether anybody acted on it.
+//
+// This is the operator's window on the conversation, so it needs operator standing — an ordinary
+// agent reads its own inbox and nothing else.
+func runLog(ctx context.Context, env *environment, arguments []string) error {
+	flags := flag.NewFlagSet("log", flag.ContinueOnError)
+	var (
+		agent  = flags.String("agent", "", "only what this agent sent or was sent")
+		topic  = flags.String("topic", "", "only messages published to this topic")
+		since  = flags.String("since", "", "only messages since this time, such as 1h or 2026-09-11T09:00:00Z")
+		limit  = flags.Int("limit", 0, "how many messages to show, most recent first")
+		follow = flags.Bool("follow", false, "keep watching, printing each new message as it arrives")
+	)
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
+	}
+
+	moment, err := resolveSince(*since)
+	if err != nil {
+		return err
+	}
+
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	filter := lacclient.LogFilter{Agent: *agent, Topic: *topic, Since: moment, Limit: *limit}
+
+	messages, err := client.MessageLog(ctx, filter)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, messages)
+	}
+
+	if len(messages) == 0 && !*follow {
+		fmt.Fprintln(env.output, "no messages")
+
+		return nil
+	}
+
+	printMessageLog(env, messages)
+
+	if !*follow {
+		return nil
+	}
+
+	return followMessageLog(ctx, env, client, filter, messages)
+}
+
+// followMessageLog prints new messages as they appear.
+//
+// It asks again rather than subscribing: the notification stream delivers what an agent is entitled
+// to receive, and the operator wants everybody's traffic, which is a different question. Asking a
+// local daemon over a socket once a second costs nothing worth saving.
+func followMessageLog(
+	ctx context.Context, env *environment, client *lacclient.Client,
+	filter lacclient.LogFilter, seen []lacclient.LoggedMessage,
+) error {
+	const interval = time.Second
+
+	printed := make(map[string]bool, len(seen))
+	for _, message := range seen {
+		printed[message.Message.ID] = true
+	}
+
+	// From here on, only what is newer than the newest thing already shown.
+	if len(seen) > 0 {
+		filter.Since = seen[0].Message.CreatedAt
+	}
+	filter.Limit = 0
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+
+		messages, err := client.MessageLog(ctx, filter)
+		if err != nil {
+			return err
+		}
+
+		fresh := make([]lacclient.LoggedMessage, 0, len(messages))
+		for _, message := range messages {
+			if !printed[message.Message.ID] {
+				printed[message.Message.ID] = true
+				fresh = append(fresh, message)
+			}
+		}
+
+		if len(fresh) > 0 {
+			printMessageLog(env, fresh)
+			filter.Since = fresh[0].Message.CreatedAt
+		}
+	}
+}
+
+// printMessageLog writes the log oldest first, which is how a conversation reads.
+func printMessageLog(env *environment, messages []lacclient.LoggedMessage) {
+	for index := len(messages) - 1; index >= 0; index-- {
+		entry := messages[index]
+
+		destination := strings.Join(entry.Recipients, ", ")
+		if entry.Message.Topic != "" {
+			destination = "#" + entry.Message.Topic + " (" + destination + ")"
+		}
+
+		fmt.Fprintf(env.output, "%s  %s → %s  [%s]  %s\n",
+			shortTime(entry.Message.CreatedAt), senderOf(entry.Message), destination,
+			entry.Message.Kind, readableBody(entry.Message.Body))
+
+		// Say how far it got only when that is news: everybody having finished with it is the
+		// uninteresting case.
+		if entry.Acknowledged < len(entry.Recipients) {
+			fmt.Fprintf(env.output, "%s  (read by %d of %d, acknowledged by %d)\n",
+				strings.Repeat(" ", len(shortTime(entry.Message.CreatedAt))),
+				entry.Delivered, len(entry.Recipients), entry.Acknowledged)
+		}
+	}
+}
+
+func senderOf(message lacclient.Message) string {
+	if message.FromName != "" {
+		return message.FromName
+	}
+
+	return message.From
+}
+
+// readableBody unwraps the {"text": "..."} that `lac send` wraps plain text in, so the log reads as
+// the sentence somebody typed rather than as JSON.
+func readableBody(body json.RawMessage) string {
+	var wrapper struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(body, &wrapper); err == nil && wrapper.Text != "" {
+		return wrapper.Text
+	}
+
+	return string(body)
+}
+
+// resolveSince accepts either a duration ago ("1h") or an absolute RFC 3339 time, because an
+// operator asking "what happened in the last hour" should not have to work out what time that was.
+func resolveSince(since string) (string, error) {
+	if since == "" {
+		return "", nil
+	}
+
+	if duration, err := time.ParseDuration(since); err == nil {
+		if duration < 0 {
+			duration = -duration
+		}
+
+		return time.Now().Add(-duration).UTC().Format(time.RFC3339), nil
+	}
+
+	if _, err := time.Parse(time.RFC3339, since); err != nil {
+		return "", fmt.Errorf("--since %q: give a duration such as 30m, or a time such as "+
+			"2026-09-11T09:00:00Z", since)
+	}
+
+	return since, nil
 }
 
 func runResources(ctx context.Context, env *environment, _ []string) error {

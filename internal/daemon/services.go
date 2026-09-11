@@ -61,8 +61,9 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 	d.notifier = newFanOutNotifier(d.server)
 
 	d.messaging = messaging.New(d.store, messaging.Options{
-		Notifier: d.notifier,
-		Logger:   d.logger,
+		Notifier:  d.notifier,
+		Retention: time.Duration(settings.MessageRetention),
+		Logger:    d.logger,
 	})
 
 	d.reporting = reporting.New(d.store, d.registry, d.messaging, reporting.Options{Logger: d.logger})

@@ -7,6 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `lac log`: what the agents have said to each other, in order, with who read it and who
+  acknowledged it. Narrow it with `--agent`, `--topic` and `--since` (a duration such as `30m`, or an
+  absolute time), or watch it live with `--follow`. Reading everyone's traffic is an operator's
+  power, gated on a new `can_read_log` capability; an ordinary agent still gets only its own inbox.
+- `message_retention` (24h by default): how long a message that every recipient acknowledged stays
+  readable in that log. Acknowledged messages used to be deleted the moment they were handled, which
+  would have emptied the log of exactly the conversations that went well.
+
 ## [0.1.2] - 2026-09-11
 
 ### Fixed
