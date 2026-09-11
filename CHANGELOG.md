@@ -7,6 +7,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation caught up with what the daemon actually does: a new
+  [running guide](docs/running.md) with a launchd agent and a systemd user unit, the single-instance
+  lock and the orphaned-daemon case; a new [pull request guide](docs/pull-requests.md) covering what
+  the watcher notices, how it behaves during a GitHub outage, and machines with more than one GitHub
+  login; and the architecture, protocol and README brought in line with the watcher, the message log
+  and the `can_read_log` capability.
+- A flaky test in the single-instance lock now says what went wrong. It treated any output from its
+  helper process as "the lock is held", so a helper that failed to take the lock was reported as this
+  process wrongly acquiring one.
+- The skill now tells agents that nothing interrupts them when a report request arrives, so they
+  should check their inbox when they finish a piece of work. Sessions were being listed as silent
+  simply because they never looked.
+
 ## [0.2.0] - 2026-09-11
 
 ### Added
