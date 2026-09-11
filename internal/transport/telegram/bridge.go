@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/leasing"
-	"code.sadeq.uk/lac/internal/service/messaging"
-	"code.sadeq.uk/lac/internal/service/registry"
-	"code.sadeq.uk/lac/internal/service/reporting"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/leasing"
+	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/registry"
+	"sadeq.uk/lac/internal/service/reporting"
 )
 
 // AgentName is how the bridge appears to the other agents, so an agent can address the operator

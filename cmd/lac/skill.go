@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"code.sadeq.uk/lac/internal/skill"
+	"sadeq.uk/lac/internal/skill"
 )
 
 // runSkill installs the bundled skill where an AI tool will find it, so an agent learns the

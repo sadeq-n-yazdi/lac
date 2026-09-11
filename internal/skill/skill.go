@@ -1,7 +1,7 @@
 // Package skill carries the LAC skill inside the binary and installs it where an AI tool will
 // find it.
 //
-// The file is embedded rather than read from a checkout, so `go install code.sadeq.uk/lac/cmd/lac`
+// The file is embedded rather than read from a checkout, so `go install sadeq.uk/lac/cmd/lac`
 // gives an operator everything they need without cloning anything.
 package skill
 

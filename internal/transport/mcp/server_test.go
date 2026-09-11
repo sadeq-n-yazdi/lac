@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/config"
-	"code.sadeq.uk/lac/internal/daemon"
+	"sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/daemon"
 )
 
 // session drives the MCP server the way a real client does: JSON on stdin, JSON on stdout.

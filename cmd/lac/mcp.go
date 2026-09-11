@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"code.sadeq.uk/lac/internal/transport/mcp"
+	"sadeq.uk/lac/internal/transport/mcp"
 )
 
 // runMCP serves LAC over the Model Context Protocol on stdin and stdout.

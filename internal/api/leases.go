@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/leasing"
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/leasing"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
 // DefineResourceParams creates or reconfigures a resource.

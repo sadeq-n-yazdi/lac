@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/id"
-	"code.sadeq.uk/lac/internal/store/sqlite"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/id"
+	"sadeq.uk/lac/internal/store/sqlite"
 )
 
 // Two live agents sharing a name would make every "tell claude-a to stop" ambiguous.

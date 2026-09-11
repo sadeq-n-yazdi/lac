@@ -66,7 +66,7 @@ other, queue for the scarce things, hand work to a shared worker, and tell you w
 
 ### Project
 
-- Go module `code.sadeq.uk/lac`, no cgo — the SQLite driver is pure Go.
+- Go module `sadeq.uk/lac`, no cgo — the SQLite driver is pure Go.
 - Storage is SQLite in WAL mode with embedded, versioned migrations; a newer schema is refused
   rather than written through.
 - Documentation: [architecture](docs/architecture.md), [protocol](docs/protocol.md),

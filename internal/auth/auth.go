@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // Permission is something an agent might be allowed to do.

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"code.sadeq.uk/lac/internal/version"
-	"code.sadeq.uk/lac/pkg/lacclient"
+	"sadeq.uk/lac/internal/version"
+	"sadeq.uk/lac/pkg/lacclient"
 )
 
 func commands() []command {

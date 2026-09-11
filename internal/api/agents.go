@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/registry"
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/registry"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
 // RegisterParams introduces an agent. It deliberately has no capabilities field: what an agent may

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/id"
-	"code.sadeq.uk/lac/internal/store/sqlite"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/id"
+	"sadeq.uk/lac/internal/store/sqlite"
 )
 
 // baseTime is a fixed instant, so tests never depend on the wall clock.

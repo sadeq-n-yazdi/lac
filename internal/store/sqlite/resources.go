@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 type resourceRepository struct{ queries querier }

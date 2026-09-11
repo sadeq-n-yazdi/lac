@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 
-	"code.sadeq.uk/lac/internal/version"
+	"sadeq.uk/lac/internal/version"
 )
 
 // exitCode carries a specific exit status out of a command, so `lac run` can return whatever the

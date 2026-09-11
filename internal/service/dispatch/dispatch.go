@@ -19,9 +19,9 @@ import (
 	"sync"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/id"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/id"
 )
 
 // recheckInterval is a safety net for waiters, not the mechanism: a submitted task wakes a worker

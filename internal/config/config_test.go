@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/config"
 )
 
 // isolate points the XDG variables at a temporary home so tests never read or write the

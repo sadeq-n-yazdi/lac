@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/messaging"
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
 // SendParams is one message. Exactly one of To and Topic is set.

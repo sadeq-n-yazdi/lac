@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.sadeq.uk/lac/internal/skill"
+	"sadeq.uk/lac/internal/skill"
 )
 
 // The skill exists twice: the copy embedded in the binary, and the one at skills/lac/SKILL.md that

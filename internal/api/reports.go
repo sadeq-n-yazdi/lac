@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
 // ReportRequestParams asks every agent what it is doing.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/transport/unixsock"
+	"sadeq.uk/lac/internal/transport/unixsock"
 )
 
 // socketPath returns a short path, because a Unix socket path must fit in about a hundred bytes

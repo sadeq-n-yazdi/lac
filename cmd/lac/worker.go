@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"code.sadeq.uk/lac/pkg/lacclient"
+	"sadeq.uk/lac/pkg/lacclient"
 )
 
 // outputFlushInterval is how often a running task's output is sent back, so a requester watching it

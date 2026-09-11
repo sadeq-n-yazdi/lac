@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // applicationName is the directory name LAC uses under each XDG base directory.

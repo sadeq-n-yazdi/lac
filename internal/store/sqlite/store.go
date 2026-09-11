@@ -16,7 +16,7 @@ import (
 
 	_ "modernc.org/sqlite" // the pure-Go SQLite driver; no cgo, so `go install` needs no toolchain
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // fileMode is the mode of the database file. It holds every message the agents exchanged, so no

@@ -1,6 +1,6 @@
 package daemon
 
-import "code.sadeq.uk/lac/internal/service/messaging"
+import "sadeq.uk/lac/internal/service/messaging"
 
 // fanOutNotifier sends a notification to every front end that might be able to deliver it, and
 // reports how many actually did.

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/messaging"
 )
 
 // helpText is what /help and anything unrecognised answers with. It is deliberately short: it is
