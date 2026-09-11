@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - One daemon per state directory. A second `lacd` against the same database and socket refuses to
   start, naming the process that holds it. The claim is an advisory lock the kernel drops with the
   process, so a crash leaves nothing to clear up.
+- `lac reload` and the `daemon.reload` method: ask the daemon to re-read its configuration without
+  finding its process id. It reports what it applied and what needs a restart, and needs the same
+  capability as defining a resource.
 - Configuration reloading. `SIGHUP` re-reads the file at once; otherwise the daemon applies a change
   once the file has settled — the same contents read three times at `restart_delay` (5s by default)
   apart, so about fifteen seconds after the last edit. Resources, capabilities, operators and worker

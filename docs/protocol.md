@@ -216,13 +216,27 @@ omitted: an agent that has gone quiet is exactly what the operator wants to see.
 
 ### The daemon itself
 
-| Method         | Parameters | Returns                                                        |
-|----------------|------------|----------------------------------------------------------------|
-| `daemon.info`  | —          | version, protocol, uptime, and the methods this build serves    |
-| `daemon.ping`  | —          | `{pong}`                                                        |
+| Method          | Parameters | Returns                                                        |
+|-----------------|------------|----------------------------------------------------------------|
+| `daemon.info`   | —          | version, protocol, uptime, and the methods this build serves    |
+| `daemon.ping`   | —          | `{pong}`                                                        |
+| `daemon.reload` | —          | `{source, applied[], deferred[]}`                               |
 
-Both work without a token. Call `daemon.info` first to check you are talking to a version you
-understand, and to discover what it can do.
+`daemon.info` and `daemon.ping` work without a token.
+
+`daemon.reload` re-reads the configuration file at once, rather than waiting for the daemon to
+notice it has settled. It needs the same capability as defining a resource — a reload can redefine
+them — and returns what it changed along with anything that changed in the file but needs a
+restart, such as the socket path:
+
+```jsonc
+--> {"jsonrpc":"2.0","id":9,"method":"daemon.reload"}
+<-- {"jsonrpc":"2.0","id":9,"result":{"source":"/home/you/.config/lac/config.yaml",
+      "applied":["resources (2)","commands"],"deferred":["socket_path"]}}
+```
+
+Call `daemon.info` first to check you are talking to a version you understand, and to discover what
+it can do.
 
 ## Driving it by hand
 

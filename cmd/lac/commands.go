@@ -24,6 +24,7 @@ func commands() []command {
 		{name: "inbox", summary: "read the messages waiting for you", run: runInbox},
 		{name: "resources", summary: "the shared resources on this machine", run: runResources},
 		{name: "define", summary: "create or reconfigure a resource (operators only)", run: runDefine},
+		{name: "reload", summary: "make the daemon re-read its configuration now", run: runReload},
 		{name: "queue", summary: "who is waiting for a resource", run: runQueue},
 		{name: "acquire", summary: "take a slot and hold it until released", run: runAcquire},
 		{name: "release", summary: "give a slot back", run: runRelease},
@@ -781,6 +782,43 @@ func runCommands(ctx context.Context, env *environment, _ []string) error {
 	for _, command := range commands {
 		fmt.Fprintf(env.output, "%s\t%s\t%s\t%s\n",
 			command.Key, command.Resource, strings.Join(command.Run, " "), command.Description)
+	}
+
+	return nil
+}
+
+// runReload asks the daemon to re-read its configuration now.
+//
+// The daemon picks a change up by itself once the file has settled, and answers SIGHUP; this is the
+// same thing without having to find the process id.
+func runReload(ctx context.Context, env *environment, _ []string) error {
+	client, release, err := env.identity.connect(ctx, env.socketPath)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	outcome, err := client.Reload(ctx)
+	if err != nil {
+		return err
+	}
+
+	if env.asJSON {
+		return writeJSON(env, outcome)
+	}
+
+	if outcome.Source != "" {
+		fmt.Fprintf(env.output, "read\t%s\n", outcome.Source)
+	}
+
+	if len(outcome.Applied) == 0 {
+		fmt.Fprintln(env.output, "no change\tnothing that can change while running had changed")
+	} else {
+		fmt.Fprintf(env.output, "applied\t%s\n", strings.Join(outcome.Applied, ", "))
+	}
+
+	if len(outcome.Deferred) > 0 {
+		fmt.Fprintf(env.output, "needs a restart\t%s\n", strings.Join(outcome.Deferred, ", "))
 	}
 
 	return nil
