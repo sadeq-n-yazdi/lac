@@ -94,7 +94,7 @@ func reloadOnHangUp(ctx context.Context, instance *daemon.Daemon, logger *slog.L
 		case <-hangUps:
 			logger.Info("reloading the configuration on SIGHUP")
 
-			if err := instance.Reload(ctx); err != nil {
+			if _, err := instance.Reload(ctx); err != nil {
 				// A bad configuration must not stop a daemon that is working: it carries on with
 				// what it already had.
 				logger.Error("the configuration was not reloaded", "error", err)

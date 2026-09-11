@@ -24,6 +24,7 @@ type API struct {
 	reporting     *reporting.Service
 	dispatch      *dispatch.Service
 	notifier      messaging.Notifier
+	reload        Reloader
 	authenticator *auth.Authenticator
 	logger        *slog.Logger
 }
@@ -34,6 +35,9 @@ type Options struct {
 	Logger *slog.Logger
 	// Notifier pushes task output to a waiting requester. Optional.
 	Notifier messaging.Notifier
+	// Reload re-reads the daemon's configuration. Without it, daemon.reload reports that this
+	// daemon cannot do so, rather than pretending it worked.
+	Reload Reloader
 }
 
 // New returns an API over the given services.
@@ -58,6 +62,7 @@ func New(
 		reporting:     reportingService,
 		dispatch:      dispatchService,
 		notifier:      options.Notifier,
+		reload:        options.Reload,
 		authenticator: authenticator,
 		logger:        logger,
 	}
@@ -71,6 +76,8 @@ func New(
 func (a *API) Register(router *jsonrpc.Router) {
 	router.Register("agent.register", a.handleRegister)
 	router.Register("agent.authenticate", a.handleAuthenticate)
+
+	router.Register("daemon.reload", a.authenticated(a.handleDaemonReload))
 
 	router.Register("agent.heartbeat", a.authenticated(a.handleHeartbeat))
 	router.Register("agent.list", a.authenticated(a.handleAgentList))

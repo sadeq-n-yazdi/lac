@@ -163,7 +163,7 @@ resources:
     capacity: 1
 `)
 
-	if err := subject.daemon.Reload(t.Context()); err != nil {
+	if _, err := subject.daemon.Reload(t.Context()); err != nil {
 		t.Fatalf("Reload() = %v, want nil", err)
 	}
 
@@ -195,7 +195,7 @@ resources:
 
 	writeConfig(t, subject.configPath, "resources: [ this is not valid yaml\n")
 
-	if err := subject.daemon.Reload(t.Context()); err == nil {
+	if _, err := subject.daemon.Reload(t.Context()); err == nil {
 		t.Fatal("Reload() with a broken file = nil, want an error")
 	}
 
@@ -228,7 +228,7 @@ commands:
     description: a greeting
 `)
 
-	if err := subject.daemon.Reload(t.Context()); err != nil {
+	if _, err := subject.daemon.Reload(t.Context()); err != nil {
 		t.Fatalf("Reload() = %v, want nil", err)
 	}
 
@@ -421,4 +421,110 @@ func TestShutdownLeavesNothingBehind(t *testing.T) {
 		t.Fatalf("the lock was not released: %v", err)
 	}
 	_ = lock.Release()
+}
+
+// The operator should not have to find a process id to reload. `lac reload` goes through the
+// daemon's own API, and reports what changed and what needs a restart.
+func TestReloadFromTheClient(t *testing.T) {
+	subject := startConfigured(t, `
+resources:
+  - name: test
+    capacity: 2
+`, 0)
+
+	operator := connectTo(t, subject.socketPath, "operator")
+
+	// Nothing has changed yet, and saying so is a useful answer in itself.
+	quiet, err := operator.Reload(t.Context())
+	if err != nil {
+		t.Fatalf("Reload() = %v, want nil", err)
+	}
+	if len(quiet.Applied) != 0 {
+		t.Errorf("Applied = %v, want nothing to have changed", quiet.Applied)
+	}
+	if quiet.Source != subject.configPath {
+		t.Errorf("Source = %q, want the file the daemon was started from", quiet.Source)
+	}
+
+	writeConfig(t, subject.configPath, `
+resources:
+  - name: test
+    capacity: 2
+  - name: reviewer
+    capacity: 1
+`)
+
+	outcome, err := operator.Reload(t.Context())
+	if err != nil {
+		t.Fatalf("Reload() = %v, want nil", err)
+	}
+	if len(outcome.Applied) == 0 {
+		t.Fatalf("Applied = %v, want the reloaded resources", outcome.Applied)
+	}
+
+	if _, err := subject.daemon.Store().Resources().ByName(t.Context(), "reviewer"); err != nil {
+		t.Errorf("the reloaded resource was not applied: %v", err)
+	}
+}
+
+// A setting that cannot change while the daemon runs must be reported, not silently dropped.
+func TestReloadReportsWhatNeedsARestart(t *testing.T) {
+	subject := startConfigured(t, "log_level: info\n", 0)
+	operator := connectTo(t, subject.socketPath, "operator")
+
+	writeConfig(t, subject.configPath, "log_level: info\nsocket_path: /tmp/somewhere-else.sock\n")
+
+	outcome, err := operator.Reload(t.Context())
+	if err != nil {
+		t.Fatalf("Reload() = %v, want nil", err)
+	}
+
+	found := false
+	for _, setting := range outcome.Deferred {
+		if setting == "socket_path" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Deferred = %v, want it to name socket_path", outcome.Deferred)
+	}
+
+	// And the daemon is still listening where it was.
+	if _, err := os.Stat(subject.socketPath); err != nil {
+		t.Errorf("the daemon moved its socket on a reload: %v", err)
+	}
+}
+
+// Reloading is an operator's business: an ordinary agent must not be able to reshape the machine.
+func TestOnlyOperatorsMayReload(t *testing.T) {
+	subject := startConfigured(t, "log_level: info\n", 0)
+	ordinary := connectTo(t, subject.socketPath, "claude-a")
+
+	_, err := ordinary.Reload(t.Context())
+	if lacclient.ErrorCode(err) != lacclient.CodeUnauthorised {
+		t.Errorf("Reload() by an ordinary agent = %v, want CodeUnauthorised", err)
+	}
+}
+
+// connectTo registers an agent against a daemon and returns its client.
+func connectTo(t *testing.T, socketPath, name string) *lacclient.Client {
+	t.Helper()
+
+	client, err := lacclient.Dial(t.Context(), lacclient.Options{SocketPath: socketPath})
+	if err != nil {
+		t.Fatalf("Dial() = %v, want nil", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	workdir, err := os.MkdirTemp("", "lacwork")
+	if err != nil {
+		t.Fatalf("creating a working directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(workdir) })
+
+	if _, err := client.Register(t.Context(), name, "claude", workdir, os.Getpid()); err != nil {
+		t.Fatalf("Register(%q) = %v, want nil", name, err)
+	}
+
+	return client
 }

@@ -615,3 +615,23 @@ func (c *Client) Tasks(ctx context.Context, limit int) ([]Task, error) {
 
 	return result.Tasks, err
 }
+
+// ReloadOutcome is what a configuration reload did.
+type ReloadOutcome struct {
+	// Source is the configuration file the daemon read.
+	Source string `json:"source"`
+	// Applied lists what now differs in the running daemon.
+	Applied []string `json:"applied"`
+	// Deferred lists settings that changed in the file but need a restart to take effect.
+	Deferred []string `json:"deferred"`
+}
+
+// Reload asks the daemon to re-read its configuration now, rather than waiting for it to notice
+// the file has settled. It needs the same capability as defining a resource.
+func (c *Client) Reload(ctx context.Context) (ReloadOutcome, error) {
+	var result ReloadOutcome
+
+	err := c.Call(ctx, "daemon.reload", nil, &result)
+
+	return result, err
+}

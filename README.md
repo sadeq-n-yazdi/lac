@@ -132,10 +132,11 @@ who holds what. Run a throwaway instance with `--database` and `--socket` pointi
 The configuration is re-read without a restart:
 
 ```sh
-kill -HUP $(pgrep lacd)        # reload now
+lac --name operator reload     # reload now, and say what changed
+kill -HUP $(pgrep lacd)        # the same, without a client
 ```
 
-or simply edit the file and wait. The daemon applies a change once the file has stopped changing —
+`lac reload` prints what it applied and what needs a restart. Or simply edit the file and wait. The daemon applies a change once the file has stopped changing —
 the same contents read three times at `restart_delay` apart, so about 15 seconds after your last
 save. That way an editor writing in several steps never has half a configuration read out from
 under it. Resources, capabilities, operators and worker commands all apply live; the socket, the

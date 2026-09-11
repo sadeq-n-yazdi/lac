@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"sadeq.uk/lac/internal/api"
 	"sadeq.uk/lac/internal/config"
 	"sadeq.uk/lac/internal/core"
 )
@@ -20,9 +21,9 @@ import (
 // at the restart delay means a change is applied about three delays after the last edit.
 const stableChecks = 3
 
-// Reloadable reports whether a setting can be applied to a running daemon. The socket, the
-// database and the secret are fixed at start-up: changing where the daemon listens or what it
-// remembers is a restart, not a reload.
+// reloadOutcome is what a reload did. The socket, the database and the secret are fixed at
+// start-up: changing where the daemon listens or what it remembers is a restart, not a reload, and
+// this is how that gets reported rather than silently ignored.
 type reloadOutcome struct {
 	// Applied lists what changed.
 	Applied []string
@@ -35,12 +36,12 @@ type reloadOutcome struct {
 // What cannot — the socket path, the database, the secret — is reported rather than silently
 // ignored, because an operator who edited a setting and saw nothing happen would reasonably assume
 // it had taken effect.
-func (d *Daemon) Reload(ctx context.Context) error {
+func (d *Daemon) Reload(ctx context.Context) (api.ReloadOutcome, error) {
 	updated, err := config.Load(d.source)
 	if err != nil {
 		// A broken configuration must not take the daemon down: it is still coordinating agents
 		// with the configuration it already has.
-		return fmt.Errorf("the configuration was not reloaded: %w", err)
+		return api.ReloadOutcome{}, fmt.Errorf("the configuration was not reloaded: %w", err)
 	}
 
 	outcome := d.apply(ctx, updated)
@@ -51,12 +52,15 @@ func (d *Daemon) Reload(ctx context.Context) error {
 
 	if len(outcome.Applied) == 0 {
 		d.logger.Info("configuration reloaded; nothing that can change at run time had changed")
-		return nil
+	} else {
+		d.logger.Info("configuration reloaded", "applied", outcome.Applied)
 	}
 
-	d.logger.Info("configuration reloaded", "applied", outcome.Applied)
-
-	return nil
+	return api.ReloadOutcome{
+		Source:   d.configPath(),
+		Applied:  outcome.Applied,
+		Deferred: outcome.Deferred,
+	}, nil
 }
 
 // apply installs the parts of a new configuration that a running daemon can honour.
@@ -265,7 +269,7 @@ func (d *Daemon) watchConfiguration(ctx context.Context) {
 				d.logger.Info("the configuration file has settled; reloading",
 					"path", path, "after", (time.Duration(stableChecks) * delay).String())
 
-				if err := d.Reload(ctx); err != nil {
+				if _, err := d.Reload(ctx); err != nil {
 					d.logger.Error("could not reload the configuration", "error", err)
 					// Keep the fingerprint as the candidate rather than the loaded one, so a
 					// corrected file is picked up without the operator touching it again.

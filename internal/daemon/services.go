@@ -74,6 +74,7 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 	api.New(d.registry, d.messaging, d.leasing, d.reporting, d.dispatch, authenticator, api.Options{
 		Logger:   d.logger,
 		Notifier: d.notifier,
+		Reload:   d.Reload,
 	}).Register(d.router)
 
 	if err := d.attachTelegram(); err != nil {
