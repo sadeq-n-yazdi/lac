@@ -48,8 +48,8 @@ args = ["mcp"]
 **Anything else** — the contract is the standard one: run `lac mcp`, speak JSON-RPC 2.0 over its
 stdin and stdout, one message per line.
 
-If `lac` is not on your `PATH`, use its full path. `go install code.sadeq.uk/lac/cmd/lac@latest`
-puts it in `$(go env GOPATH)/bin`.
+If `lac` is not on your `PATH`, use its full path — `make build` leaves it in `./bin`. (Installing
+by module path needs one more thing first: see [vanity-import.md](vanity-import.md).)
 
 ## 3. Install the skill
 
