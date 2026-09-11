@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-11
+
 ### Added
 
 - A pull request watcher for GitHub. `lac pr watch owner/repository#number` keeps an eye on CI
@@ -106,5 +108,6 @@ other, queue for the scarce things, hand work to a shared worker, and tell you w
 - CI on Linux and macOS: build, `go vet`, golangci-lint (including gosec), `govulncheck`, and the
   whole suite under the race detector.
 
-[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sadeq-n-yazdi/lac/releases/tag/v0.1.0
