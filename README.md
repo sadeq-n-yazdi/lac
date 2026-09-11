@@ -26,6 +26,7 @@ LAC solves those three problems and nothing else.
 | **Messaging**  | Direct and topic-based messages between registered agents, durable until acknowledged.               |
 | **Resources**  | Named resources with a fixed capacity (`test` = 4 slots, `reviewer` = 1) and a fair, ordered queue.  |
 | **Reporting**  | Broadcast a report request and collect every agent's answer in one place.                            |
+| **The log**    | Read back what the agents have said to each other, with who read it and who acted on it.             |
 | **Dispatch**   | Hand a job to a shared worker, which runs the operator's configured command in your directory.       |
 | **PR watching**| Follow a pull request and be told when CI finishes, a review lands, or a conversation is resolved.   |
 | **Interfaces** | A CLI, an MCP server so AI tools discover it automatically, and an optional Telegram bot for you.    |
@@ -66,6 +67,8 @@ new front end means adding a transport, not touching business rules.
 - [docs/architecture.md](docs/architecture.md) — how the parts fit together, and why
 - [docs/protocol.md](docs/protocol.md) — the JSON-RPC surface, for writing a client
 - [docs/mcp.md](docs/mcp.md) — using LAC from Claude Code, Codex or another MCP client
+- [docs/running.md](docs/running.md) — running the daemon as a login service, and where its files live
+- [docs/pull-requests.md](docs/pull-requests.md) — the pull request watcher, including more than one GitHub account
 - [docs/telegram.md](docs/telegram.md) — asking what the agents are doing from your phone
 
 ## Status
@@ -128,9 +131,16 @@ See [docs/mcp.md](docs/mcp.md) for Codex, for other clients, and for what the mo
 
 ## Running it
 
+`lacd &` is enough to try it. To have it there whenever you are, run it as a launchd agent or a
+systemd user unit — both are written out in [docs/running.md](docs/running.md), along with the one
+thing worth getting right: a service manager passes almost no environment through, and the pull
+request watcher needs `gh` on its `PATH`.
+
 One daemon runs per state directory. A second `lacd` against the same database and socket refuses
-to start and says who holds it — two of them would each serve half the agents and disagree about
-who holds what. Run a throwaway instance with `--database` and `--socket` pointing elsewhere.
+to start and says which pid holds it — two of them would each serve half the agents and disagree
+about who holds what. The kernel drops the lock when a process dies, so a crash leaves nothing to
+clean up; a daemon you started by hand and forgot is the case that needs you. Run a throwaway
+instance with `--database` and `--socket` pointing elsewhere.
 
 The configuration is re-read without a restart:
 
@@ -165,7 +175,13 @@ LAC follows the XDG base directory spec:
 LAC listens on a Unix domain socket only — there is no TCP listener anywhere, including in the
 optional Telegram bridge, which calls outward and is never called into. The socket directory is `0700`, the socket is
 `0600`, and every connection's peer UID must match the daemon's. Agents authenticate with a token issued at
-registration and stored only as a keyed hash. See [SECURITY.md](SECURITY.md) for the full model and how to report a
+registration and stored only as a keyed hash.
+
+What an agent may do comes from the operator's policy, never from the agent asking: broadcasting,
+defining resources, asking everyone to report, and reading the traffic between other agents are all
+capabilities, and the last three are off for ordinary agents. Reading everyone's messages
+(`lac log`) is kept separate from asking everyone to report, because being allowed to interrupt the
+machine is not the same as being allowed to read its post. See [SECURITY.md](SECURITY.md) for the full model and how to report a
 vulnerability.
 
 ## Contributing

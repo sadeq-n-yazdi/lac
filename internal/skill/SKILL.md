@@ -131,6 +131,16 @@ may be stuck".
 
 From a shell: `lac answer <request-id> "what you are doing"`.
 
+**Nothing interrupts you to tell you a question has arrived.** A report request sits in your inbox
+until you look, and an operator waiting thirty seconds for an answer that never comes has no way to
+tell "busy" from "gone". So call `lac_inbox` when you finish a piece of work, and whenever the user
+mentions the other agents. It is one cheap call, and it is also how you find out that somebody else
+has taken the resource you were about to ask for.
+
+Everything you send is readable afterwards: the operator can run `lac log` and see what was said, to
+whom, and whether the recipient ever read it. Write your messages as if somebody will read them
+back, because they will.
+
 ## 6. Report to the user
 
 When the user asks what everyone is doing, or why something is waiting:

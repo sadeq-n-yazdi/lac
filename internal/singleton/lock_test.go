@@ -1,6 +1,7 @@
 package singleton_test
 
 import (
+	"bufio"
 	"errors"
 	"os"
 	"os/exec"
@@ -93,10 +94,15 @@ func TestAKilledHolderLeavesNoStaleLock(t *testing.T) {
 		t.Fatalf("starting the helper: %v", err)
 	}
 
-	// Wait for it to say it has the lock.
-	ready := make([]byte, 5)
-	if _, err := output.Read(ready); err != nil {
-		t.Fatalf("waiting for the helper: %v", err)
+	// Wait for it to say it has the lock. Read a whole line and check what it says: the helper
+	// reports a failure on the same stream, and treating any output as readiness turns "the helper
+	// could not take the lock" into a baffling assertion about this process instead.
+	lines := bufio.NewScanner(output)
+	if !lines.Scan() {
+		t.Fatalf("waiting for the helper: %v", lines.Err())
+	}
+	if ready := strings.TrimSpace(lines.Text()); ready != "held" {
+		t.Fatalf("the helper said %q, want \"held\"", ready)
 	}
 
 	if _, err := singleton.Acquire(path); !errors.Is(err, singleton.ErrAlreadyRunning) {

@@ -26,7 +26,8 @@ parameter anywhere in this API, because honouring one would let any agent act as
       "agent":{"id":"agent_06g8…","name":"claude-a","kind":"claude","state":"active",
                "workdir":"/home/you/code/project","pid":4242,
                "capabilities":{"resources":["*"],"can_broadcast":true,
-                               "can_define_resources":false,"can_request_reports":false},
+                               "can_define_resources":false,"can_request_reports":false,
+                               "can_read_log":false},
                "registered_at":"2026-03-01T12:00:00Z","last_heartbeat_at":"2026-03-01T12:00:00Z"},
       "token":"lac_R2h0…"}}
 ```
