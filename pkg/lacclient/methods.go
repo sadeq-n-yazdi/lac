@@ -40,6 +40,7 @@ type Agent struct {
 	Kind            string       `json:"kind"`
 	Workdir         string       `json:"workdir"`
 	ProcessID       int          `json:"pid"`
+	Internal        bool         `json:"internal,omitempty"`
 	State           string       `json:"state"`
 	Capabilities    Capabilities `json:"capabilities"`
 	RegisteredAt    string       `json:"registered_at"`

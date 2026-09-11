@@ -94,9 +94,12 @@ func (s *Service) Request(
 		return core.ReportRequest{}, err
 	}
 
+	// The daemon's own components are on the roster but have nobody behind them to answer, so
+	// asking them would only hold the request open until the deadline for a reply that is not
+	// coming.
 	asked := make([]string, 0, len(present))
 	for _, agent := range present {
-		if agent.ID != requesterID {
+		if agent.ID != requesterID && !agent.Internal {
 			asked = append(asked, agent.ID)
 		}
 	}

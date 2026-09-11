@@ -13,8 +13,8 @@ type watchRepository struct{ queries querier }
 
 var _ core.WatchRepository = watchRepository{}
 
-const watchColumns = `id, owner, repository, number, snapshot, state, draft, title, checks_state, ` +
-	`unresolved, observed_at, failures, last_error, last_error_at, next_poll_at, created_at`
+const watchColumns = `id, owner, repository, number, account, snapshot, state, draft, title, ` +
+	`checks_state, unresolved, observed_at, failures, last_error, last_error_at, next_poll_at, created_at`
 
 // defaultEventLimit caps an event listing that does not ask for one.
 const defaultEventLimit = 50
@@ -26,8 +26,8 @@ func (r watchRepository) Create(ctx context.Context, watch core.Watch) error {
 
 	_, err := r.queries.ExecContext(ctx, `
 		INSERT INTO watches (`+watchColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		watch.ID, watch.Owner, watch.Repository, watch.Number, string(watch.Snapshot),
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		watch.ID, watch.Owner, watch.Repository, watch.Number, watch.Account, string(watch.Snapshot),
 		watch.State, boolToInt(watch.Draft), watch.Title, watch.ChecksState, watch.Unresolved,
 		toMicros(watch.ObservedAt), watch.Failures, watch.LastError, toMicros(watch.LastErrorAt),
 		requireMicros(watch.NextPollAt), requireMicros(watch.CreatedAt),
@@ -112,10 +112,10 @@ func (r watchRepository) Due(ctx context.Context, at time.Time, limit int) ([]co
 func (r watchRepository) RecordObservation(ctx context.Context, watch core.Watch) error {
 	result, err := r.queries.ExecContext(ctx, `
 		UPDATE watches
-		   SET snapshot = ?, state = ?, draft = ?, title = ?, checks_state = ?, unresolved = ?,
-		       observed_at = ?, failures = 0, last_error = '', next_poll_at = ?
+		   SET account = ?, snapshot = ?, state = ?, draft = ?, title = ?, checks_state = ?,
+		       unresolved = ?, observed_at = ?, failures = 0, last_error = '', next_poll_at = ?
 		 WHERE id = ?`,
-		string(watch.Snapshot), watch.State, boolToInt(watch.Draft), watch.Title,
+		watch.Account, string(watch.Snapshot), watch.State, boolToInt(watch.Draft), watch.Title,
 		watch.ChecksState, watch.Unresolved, requireMicros(watch.ObservedAt),
 		requireMicros(watch.NextPollAt), watch.ID,
 	)
@@ -261,8 +261,8 @@ func scanWatch(source scanner) (core.Watch, error) {
 		createdAt   int64
 	)
 
-	if err := source.Scan(&watch.ID, &watch.Owner, &watch.Repository, &watch.Number, &snapshot,
-		&watch.State, &draft, &watch.Title, &watch.ChecksState, &watch.Unresolved,
+	if err := source.Scan(&watch.ID, &watch.Owner, &watch.Repository, &watch.Number, &watch.Account,
+		&snapshot, &watch.State, &draft, &watch.Title, &watch.ChecksState, &watch.Unresolved,
 		&observedAt, &watch.Failures, &watch.LastError, &lastErrorAt, &nextPollAt, &createdAt); err != nil {
 		return core.Watch{}, err
 	}

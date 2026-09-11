@@ -130,6 +130,32 @@ func TestTheRequesterIsNotAsked(t *testing.T) {
 	}
 }
 
+// The daemon's own components sit on the roster so they can be addressed, but nobody is behind one
+// to say what they are working on. Asking them would hold every report request open until its
+// deadline and then name them as silent, which is noise rather than news.
+func TestTheDaemonsOwnComponentsAreNotAsked(t *testing.T) {
+	subject := newHarness(t)
+	operator := subject.register(t, "operator", 1)
+	working := subject.register(t, "claude-a", 2)
+
+	watcher, err := subject.registry.RegisterInternal(t.Context(), registry.RegisterRequest{
+		Name: "pr-watcher", Kind: "watcher",
+	})
+	if err != nil {
+		t.Fatalf("RegisterInternal() = %v, want nil", err)
+	}
+
+	request, err := subject.service.Request(t.Context(), operator.ID, "status?", time.Minute)
+	if err != nil {
+		t.Fatalf("Request() = %v, want nil", err)
+	}
+
+	if len(request.AskedAgentIDs) != 1 || request.AskedAgentIDs[0] != working.ID {
+		t.Errorf("asked %v, want only the working agent %s (not %s)",
+			request.AskedAgentIDs, working.ID, watcher.Agent.ID)
+	}
+}
+
 // An agent that never answers must be named, because that is the interesting case: it may be stuck.
 func TestSilentAgentsAreListed(t *testing.T) {
 	subject := newHarness(t)

@@ -145,6 +145,7 @@ func (s *Service) register(
 		Workdir:         workdir,
 		ProcessID:       request.ProcessID,
 		Capabilities:    s.options.CapabilitiesFor(request.Name),
+		Internal:        internal,
 		State:           core.AgentActive,
 		RegisteredAt:    now,
 		LastHeartbeatAt: now,

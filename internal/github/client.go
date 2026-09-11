@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -37,6 +38,9 @@ type Client struct {
 	// executable is the gh command. Tests point it at a stub.
 	executable string
 	timeout    time.Duration
+	// tokens caches a token per account, so reading as a particular login does not mean another
+	// subprocess on every poll.
+	tokens *tokens
 }
 
 // Options configure a Client.
@@ -61,7 +65,7 @@ func New(options Options) *Client {
 		timeout = defaultTimeout
 	}
 
-	return &Client{executable: executable, timeout: timeout}
+	return &Client{executable: executable, timeout: timeout, tokens: newTokens()}
 }
 
 // Available reports whether gh is there and logged in, so the daemon can say which of the two is
@@ -112,14 +116,32 @@ query($owner:String!,$repo:String!,$number:Int!){
   }
 }`
 
-// PullRequest reads one pull request.
-func (c *Client) PullRequest(ctx context.Context, owner, repository string, number int) (PullRequest, error) {
-	output, err := c.run(ctx, "api", "graphql",
-		"-f", "query="+pullRequestQuery,
-		"-F", "owner="+owner,
-		"-F", "repo="+repository,
-		"-F", "number="+strconv.Itoa(number),
+// PullRequest reads one pull request as the given account, or as whichever account gh considers
+// active when it is empty.
+//
+// Naming the account matters on a machine with more than one login: gh does not choose by
+// directory, so a repository only one of them can see is invisible to the others.
+func (c *Client) PullRequest(
+	ctx context.Context, account, owner, repository string, number int,
+) (PullRequest, error) {
+	arguments := []string{
+		"api", "graphql",
+		"-f", "query=" + pullRequestQuery,
+		"-F", "owner=" + owner,
+		"-F", "repo=" + repository,
+		"-F", "number=" + strconv.Itoa(number),
+	}
+
+	var (
+		output []byte
+		err    error
 	)
+
+	if account == "" {
+		output, err = c.run(ctx, arguments...)
+	} else {
+		output, err = c.runAs(ctx, account, arguments...)
+	}
 	if err != nil {
 		return PullRequest{}, err
 	}
@@ -156,12 +178,40 @@ func (c *Client) PullRequest(ctx context.Context, owner, repository string, numb
 	return response.Data.Repository.PullRequest.convert(owner, repository), nil
 }
 
-// run executes gh and returns its output.
+// run executes gh as whichever account is active.
 func (c *Client) run(ctx context.Context, arguments ...string) ([]byte, error) {
+	return c.execute(ctx, nil, arguments...)
+}
+
+// runAs executes gh as a particular account, by handing it that account's token.
+//
+// The token goes in the environment rather than on the command line, where every process on the
+// machine could read it, and it is never logged. Changing gh's active account instead would change
+// it for the operator's own shell, which is not ours to do.
+func (c *Client) runAs(ctx context.Context, account string, arguments ...string) ([]byte, error) {
+	token, err := c.tokenFor(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := c.execute(ctx, []string{"GH_TOKEN=" + token}, arguments...)
+	if err != nil && errors.Is(err, ErrNoCLI) {
+		// The cached token may simply have been revoked; forget it so the next attempt asks again.
+		c.tokens.forget(account)
+	}
+
+	return output, err
+}
+
+// execute runs gh with any extra environment, and returns its output.
+func (c *Client) execute(ctx context.Context, environment []string, arguments ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	command := exec.CommandContext(ctx, c.executable, arguments...) //nolint:gosec // gh, or a path the operator configured
+	if len(environment) > 0 {
+		command.Env = append(os.Environ(), environment...)
+	}
 
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout

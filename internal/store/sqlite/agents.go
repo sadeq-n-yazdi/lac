@@ -14,7 +14,8 @@ type agentRepository struct{ queries querier }
 
 var _ core.AgentRepository = agentRepository{}
 
-const agentColumns = `id, name, kind, workdir, process_id, capabilities, state, registered_at, last_heartbeat_at`
+const agentColumns = `id, name, kind, workdir, process_id, capabilities, internal, state, ` +
+	`registered_at, last_heartbeat_at`
 
 // storedCapabilities is the on-disk shape of core.Capabilities. It is defined here rather than in
 // the domain so that a change to the storage format never forces a change to the domain type.
@@ -65,9 +66,10 @@ func (r agentRepository) Create(ctx context.Context, agent core.Agent) error {
 
 	_, err = r.queries.ExecContext(ctx, `
 		INSERT INTO agents (`+agentColumns+`)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		agent.ID, agent.Name, agent.Kind, agent.Workdir, agent.ProcessID, capabilities,
-		string(agent.State), requireMicros(agent.RegisteredAt), requireMicros(agent.LastHeartbeatAt),
+		boolToInt(agent.Internal), string(agent.State), requireMicros(agent.RegisteredAt),
+		requireMicros(agent.LastHeartbeatAt),
 	)
 
 	return translateError("creating agent "+agent.Name, err)
@@ -85,11 +87,12 @@ func (r agentRepository) Update(ctx context.Context, agent core.Agent) error {
 
 	result, err := r.queries.ExecContext(ctx, `
 		UPDATE agents
-		   SET name = ?, kind = ?, workdir = ?, process_id = ?, capabilities = ?,
+		   SET name = ?, kind = ?, workdir = ?, process_id = ?, capabilities = ?, internal = ?,
 		       state = ?, registered_at = ?, last_heartbeat_at = ?
 		 WHERE id = ?`,
-		agent.Name, agent.Kind, agent.Workdir, agent.ProcessID, capabilities, string(agent.State),
-		requireMicros(agent.RegisteredAt), requireMicros(agent.LastHeartbeatAt), agent.ID,
+		agent.Name, agent.Kind, agent.Workdir, agent.ProcessID, capabilities,
+		boolToInt(agent.Internal), string(agent.State), requireMicros(agent.RegisteredAt),
+		requireMicros(agent.LastHeartbeatAt), agent.ID,
 	)
 
 	return affectedOrNotFound("updating agent "+agent.ID, result, err)
@@ -243,13 +246,14 @@ func scanAgent(source scanner) (core.Agent, error) {
 	var (
 		agent           core.Agent
 		capabilities    string
+		internal        int
 		state           string
 		registeredAt    int64
 		lastHeartbeatAt int64
 	)
 
 	if err := source.Scan(&agent.ID, &agent.Name, &agent.Kind, &agent.Workdir, &agent.ProcessID,
-		&capabilities, &state, &registeredAt, &lastHeartbeatAt); err != nil {
+		&capabilities, &internal, &state, &registeredAt, &lastHeartbeatAt); err != nil {
 		return core.Agent{}, err
 	}
 
@@ -259,6 +263,7 @@ func scanAgent(source scanner) (core.Agent, error) {
 	}
 
 	agent.Capabilities = decoded
+	agent.Internal = internal != 0
 	agent.State = core.AgentState(state)
 	agent.RegisteredAt = fromRequiredMicros(registeredAt)
 	agent.LastHeartbeatAt = fromRequiredMicros(lastHeartbeatAt)

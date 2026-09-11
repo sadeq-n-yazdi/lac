@@ -28,21 +28,60 @@ type forge struct {
 	current github.PullRequest
 	failure error
 	reads   int
+	// visibleTo, when set, is the only account that can see the pull request. It stands in for a
+	// repository one github login can see and another cannot.
+	visibleTo string
+	accounts  []string
+	// readsAs records which account each read was made as.
+	readsAs []string
 }
 
-func (f *forge) PullRequest(context.Context, string, string, int) (github.PullRequest, error) {
+func (f *forge) PullRequest(
+	_ context.Context, account, _, _ string, _ int,
+) (github.PullRequest, error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
 	f.reads++
+	f.readsAs = append(f.readsAs, account)
+
 	if f.failure != nil {
 		return github.PullRequest{}, f.failure
+	}
+	if f.visibleTo != "" && account != f.visibleTo {
+		return github.PullRequest{}, github.ErrNotFound
 	}
 
 	return f.current, nil
 }
 
+func (f *forge) Accounts(context.Context) ([]string, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	if f.accounts == nil {
+		return []string{"active-login"}, nil
+	}
+
+	return f.accounts, nil
+}
+
 func (f *forge) Available(context.Context) error { return nil }
+
+func (f *forge) onlyVisibleTo(account string, accounts ...string) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	f.visibleTo = account
+	f.accounts = accounts
+}
+
+func (f *forge) accountsUsed() []string {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	return append([]string(nil), f.readsAs...)
+}
 
 func (f *forge) set(pullRequest github.PullRequest) {
 	f.mutex.Lock()
@@ -791,4 +830,82 @@ func messageIDs(t *testing.T, subject *harness, agent core.Agent) []string {
 	}
 
 	return identifiers
+}
+
+// A machine with a work login and a personal one has repositories each login cannot see, and gh
+// does not choose by directory. The watcher has to find the login that can see a pull request, and
+// then keep using it.
+func TestARepositoryVisibleToAnotherLoginIsFound(t *testing.T) {
+	subject := newHarness(t)
+	agent := subject.agent(t, "claude-a", 1)
+
+	subject.forge.set(openPullRequest())
+	subject.forge.onlyVisibleTo("personal-login", "work-login", "personal-login")
+
+	watch, err := subject.service.Watch(t.Context(), agent.ID, "sadeq-n-yazdi", "personal-website", 5)
+	if err != nil {
+		t.Fatalf("Watch() = %v, want it to find the login that can see it", err)
+	}
+	if watch.Account != "personal-login" {
+		t.Errorf("Account = %q, want the login that could see it", watch.Account)
+	}
+
+	// The active login is tried first, because on the usual single-login machine it is the only
+	// attempt worth making.
+	used := subject.forge.accountsUsed()
+	if len(used) < 2 || used[0] != "" {
+		t.Errorf("the reads were made as %v, want the active login tried first", used)
+	}
+
+	// And the next read goes straight to the login that worked, rather than searching again.
+	subject.advance(time.Minute)
+	before := len(subject.forge.accountsUsed())
+
+	if _, err := subject.service.Refresh(t.Context(), watch.ID); err != nil {
+		t.Fatalf("Refresh() = %v, want nil", err)
+	}
+
+	used = subject.forge.accountsUsed()
+	if len(used) != before+1 || used[len(used)-1] != "personal-login" {
+		t.Errorf("the refresh read as %v, want one read as the remembered login", used[before:])
+	}
+}
+
+// A pull request no login can see is refused, and says that every login was tried — otherwise the
+// operator is left wondering whether the right account was even considered.
+func TestAPullRequestNoLoginCanSeeSaysSo(t *testing.T) {
+	subject := newHarness(t)
+	agent := subject.agent(t, "claude-a", 1)
+
+	subject.forge.onlyVisibleTo("nobody-has-this-login", "work-login", "personal-login")
+
+	_, err := subject.service.Watch(t.Context(), agent.ID, "someone", "private", 1)
+	if !errors.Is(err, github.ErrNotFound) {
+		t.Fatalf("Watch() = %v, want ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), "work-login") || !strings.Contains(err.Error(), "personal-login") {
+		t.Errorf("the error does not say which logins were tried: %v", err)
+	}
+}
+
+// An outage looks the same from every login, so it must not send the watcher round all of them.
+func TestAnOutageIsNotMistakenForAVisibilityProblem(t *testing.T) {
+	subject := newHarness(t)
+	agent := subject.agent(t, "claude-a", 1)
+
+	subject.forge.set(openPullRequest())
+	watch, err := subject.service.Watch(t.Context(), agent.ID, "sadeq-n-yazdi", "lac", 31)
+	if err != nil {
+		t.Fatalf("Watch() = %v, want nil", err)
+	}
+
+	subject.forge.fail(github.ErrUnavailable)
+	before := len(subject.forge.accountsUsed())
+	subject.advance(time.Minute)
+
+	_, _ = subject.service.Refresh(t.Context(), watch.ID)
+
+	if attempts := len(subject.forge.accountsUsed()) - before; attempts != 1 {
+		t.Errorf("an outage caused %d reads, want 1: every login would fail the same way", attempts)
+	}
 }

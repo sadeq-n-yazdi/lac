@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 
@@ -70,8 +71,11 @@ type Options struct {
 // Forge is the part of GitHub this service needs. It is an interface so the service can be tested
 // without a network, and so a second forge could be added without touching the watching itself.
 type Forge interface {
-	// PullRequest reads one pull request.
-	PullRequest(ctx context.Context, owner, repository string, number int) (github.PullRequest, error)
+	// PullRequest reads one pull request as the given account, or as whichever is active when it is
+	// empty.
+	PullRequest(ctx context.Context, account, owner, repository string, number int) (github.PullRequest, error)
+	// Accounts lists the logins available, the active one first.
+	Accounts(ctx context.Context) ([]string, error)
 	// Available reports whether the forge can be reached at all.
 	Available(ctx context.Context) error
 }
@@ -301,7 +305,7 @@ func (s *Service) Refresh(ctx context.Context, watchID string) (core.Watch, erro
 
 // poll reads one pull request and records the outcome, successful or not.
 func (s *Service) poll(ctx context.Context, watch core.Watch) (core.Watch, error) {
-	observation, err := s.forge.PullRequest(ctx, watch.Owner, watch.Repository, watch.Number)
+	observation, account, err := s.read(ctx, watch)
 	if err != nil {
 		return watch, s.recordFailure(ctx, watch, err)
 	}
@@ -315,6 +319,7 @@ func (s *Service) poll(ctx context.Context, watch core.Watch) (core.Watch, error
 	}
 
 	updated := watch
+	updated.Account = account
 	updated.Snapshot = encoded
 	updated.Title = observation.Title
 	updated.State = observation.State
@@ -348,6 +353,64 @@ func (s *Service) poll(ctx context.Context, watch core.Watch) (core.Watch, error
 	s.refreshed.signal(watch.ID)
 
 	return updated, nil
+}
+
+// read fetches a pull request, finding the account that can see it if that is not yet known.
+//
+// A machine with a work login and a personal one has a repository each login cannot see, and gh
+// does not choose by directory. So: try the account that worked last time; otherwise try each login
+// in turn, active first, and remember which one answered. Only a "not found" is worth trying the
+// next account for — an outage looks the same from every login.
+func (s *Service) read(ctx context.Context, watch core.Watch) (github.PullRequest, string, error) {
+	if watch.Account != "" {
+		observation, err := s.forge.PullRequest(ctx, watch.Account, watch.Owner, watch.Repository, watch.Number)
+		if err == nil {
+			return observation, watch.Account, nil
+		}
+		if !errors.Is(err, github.ErrNotFound) {
+			return github.PullRequest{}, "", err
+		}
+
+		// The login that used to see it no longer does — it was signed out, or lost access. Fall
+		// through and look again rather than reporting a pull request as gone.
+		s.logger.Info("the account that could see this pull request no longer can; looking again",
+			"reference", watch.Reference(), "account", watch.Account)
+	}
+
+	// The active account first: on the usual single-login machine this is the only attempt.
+	observation, err := s.forge.PullRequest(ctx, "", watch.Owner, watch.Repository, watch.Number)
+	if err == nil {
+		return observation, "", nil
+	}
+	if !errors.Is(err, github.ErrNotFound) {
+		return github.PullRequest{}, "", err
+	}
+
+	accounts, accountsErr := s.forge.Accounts(ctx)
+	if accountsErr != nil || len(accounts) <= 1 {
+		// Nothing else to try: report the original answer, which is the useful one.
+		return github.PullRequest{}, "", err
+	}
+
+	for _, account := range accounts {
+		if account == watch.Account {
+			continue // already tried, above
+		}
+
+		observation, attemptErr := s.forge.PullRequest(ctx, account, watch.Owner, watch.Repository, watch.Number)
+		if attemptErr == nil {
+			s.logger.Info("found the pull request under another github login",
+				"reference", watch.Reference(), "account", account)
+
+			return observation, account, nil
+		}
+		if !errors.Is(attemptErr, github.ErrNotFound) {
+			return github.PullRequest{}, "", attemptErr
+		}
+	}
+
+	return github.PullRequest{}, "", fmt.Errorf("%w (tried every github login this machine is signed in to: %s)",
+		err, strings.Join(accounts, ", "))
 }
 
 // recordFailure notes that GitHub could not be reached and works out when to try again.

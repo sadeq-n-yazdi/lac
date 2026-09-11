@@ -18,11 +18,13 @@ import (
 
 // AgentView is an agent as clients see it.
 type AgentView struct {
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	Kind            string           `json:"kind"`
-	Workdir         string           `json:"workdir"`
-	ProcessID       int              `json:"pid"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	Workdir   string `json:"workdir"`
+	ProcessID int    `json:"pid"`
+	// Internal marks one of the daemon's own components rather than somebody's session.
+	Internal        bool             `json:"internal,omitempty"`
 	State           string           `json:"state"`
 	Capabilities    CapabilitiesView `json:"capabilities"`
 	RegisteredAt    string           `json:"registered_at"`
@@ -49,6 +51,7 @@ func viewOfAgent(agent core.Agent) AgentView {
 		Kind:      agent.Kind,
 		Workdir:   agent.Workdir,
 		ProcessID: agent.ProcessID,
+		Internal:  agent.Internal,
 		State:     string(agent.State),
 		Capabilities: CapabilitiesView{
 			Resources:          resources,

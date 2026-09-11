@@ -9,6 +9,10 @@ CREATE TABLE watches (
     owner         TEXT    NOT NULL,
     repository    TEXT    NOT NULL,
     number        INTEGER NOT NULL,
+    -- The github login that can see this repository. gh has one active account at a time and does
+    -- not choose by directory, so a machine with a work login and a personal one has to remember
+    -- which of them each repository is visible to.
+    account       TEXT    NOT NULL DEFAULT '',
     -- The last good observation, as JSON. Everything below it is denormalised from this for
     -- listing and for noticing changes without decoding it.
     snapshot      TEXT    NOT NULL DEFAULT '',

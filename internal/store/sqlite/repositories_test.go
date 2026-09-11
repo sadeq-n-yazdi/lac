@@ -32,6 +32,32 @@ func TestAgentNamesAreUniqueWhileActive(t *testing.T) {
 	}
 }
 
+// Whether an agent is one of the daemon's own components decides whether it is asked for reports,
+// so it must survive being written and read back.
+func TestWhetherAnAgentIsInternalRoundTrips(t *testing.T) {
+	store := openStore(t)
+	agent := newAgent(t, store, "pr-watcher")
+
+	if stored, err := store.Agents().ByID(t.Context(), agent.ID); err != nil {
+		t.Fatalf("ByID() = %v, want nil", err)
+	} else if stored.Internal {
+		t.Error("an ordinary agent came back marked as internal")
+	}
+
+	agent.Internal = true
+	if err := store.Agents().Update(t.Context(), agent); err != nil {
+		t.Fatalf("Update() = %v, want nil", err)
+	}
+
+	stored, err := store.Agents().ByID(t.Context(), agent.ID)
+	if err != nil {
+		t.Fatalf("ByID() = %v, want nil", err)
+	}
+	if !stored.Internal {
+		t.Error("the internal mark did not round trip")
+	}
+}
+
 // Capabilities decide what an agent may do, so they must survive a round trip exactly.
 func TestAgentCapabilitiesRoundTrip(t *testing.T) {
 	store := openStore(t)

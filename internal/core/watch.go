@@ -17,6 +17,11 @@ type Watch struct {
 	Repository string
 	Number     int
 
+	// Account is the GitHub login that can see this repository, remembered from the first read that
+	// worked. On a machine with more than one login, gh does not choose by directory, so the one
+	// that can see a given repository has to be found and kept.
+	Account string
+
 	// Snapshot is the last good observation, as JSON. Empty before the first successful poll.
 	Snapshot []byte
 

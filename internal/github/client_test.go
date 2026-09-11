@@ -82,7 +82,7 @@ const fullAnswer = `{
 func TestPullRequest(t *testing.T) {
 	client := answering(t, fullAnswer)
 
-	pullRequest, err := client.PullRequest(t.Context(), "sadeq-n-yazdi", "lac", 31)
+	pullRequest, err := client.PullRequest(t.Context(), "", "sadeq-n-yazdi", "lac", 31)
 	if err != nil {
 		t.Fatalf("PullRequest() = %v, want nil", err)
 	}
@@ -109,7 +109,7 @@ func TestPullRequest(t *testing.T) {
 func TestChecksAreSummarisedAndNamed(t *testing.T) {
 	client := answering(t, fullAnswer)
 
-	pullRequest, err := client.PullRequest(t.Context(), "sadeq-n-yazdi", "lac", 31)
+	pullRequest, err := client.PullRequest(t.Context(), "", "sadeq-n-yazdi", "lac", 31)
 	if err != nil {
 		t.Fatalf("PullRequest() = %v, want nil", err)
 	}
@@ -136,7 +136,7 @@ func TestChecksAreSummarisedAndNamed(t *testing.T) {
 func TestUnresolvedThreadsExcludesResolvedAndOutdated(t *testing.T) {
 	client := answering(t, fullAnswer)
 
-	pullRequest, err := client.PullRequest(t.Context(), "sadeq-n-yazdi", "lac", 31)
+	pullRequest, err := client.PullRequest(t.Context(), "", "sadeq-n-yazdi", "lac", 31)
 	if err != nil {
 		t.Fatalf("PullRequest() = %v, want nil", err)
 	}
@@ -161,7 +161,7 @@ func TestMergedIsItsOwnState(t *testing.T) {
 		"comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},
 		"commits":{"nodes":[]}}}}}`)
 
-	pullRequest, err := client.PullRequest(t.Context(), "owner", "repo", 1)
+	pullRequest, err := client.PullRequest(t.Context(), "", "owner", "repo", 1)
 	if err != nil {
 		t.Fatalf("PullRequest() = %v, want nil", err)
 	}
@@ -177,7 +177,7 @@ func TestNoChecksIsUnknownRatherThanFailure(t *testing.T) {
 		"comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},
 		"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}}}`)
 
-	pullRequest, err := client.PullRequest(t.Context(), "owner", "repo", 1)
+	pullRequest, err := client.PullRequest(t.Context(), "", "owner", "repo", 1)
 	if err != nil {
 		t.Fatalf("PullRequest() = %v, want nil", err)
 	}
@@ -193,7 +193,7 @@ func TestADeletedAuthorIsHandled(t *testing.T) {
 		"comments":{"nodes":[{"id":"c","author":null,"body":"hello","createdAt":""}]},
 		"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"commits":{"nodes":[]}}}}}`)
 
-	pullRequest, err := client.PullRequest(t.Context(), "owner", "repo", 1)
+	pullRequest, err := client.PullRequest(t.Context(), "", "owner", "repo", 1)
 	if err != nil {
 		t.Fatalf("PullRequest() = %v, want nil", err)
 	}
@@ -241,7 +241,7 @@ func TestFailuresAreClassified(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client := stubGH(t, test.script)
 
-			_, err := client.PullRequest(t.Context(), "owner", "repo", 1)
+			_, err := client.PullRequest(t.Context(), "", "owner", "repo", 1)
 			if !errors.Is(err, test.want) {
 				t.Errorf("PullRequest() = %v, want %v", err, test.want)
 			}
@@ -255,7 +255,7 @@ func TestAGraphQLNotFoundIsNotFound(t *testing.T) {
 	client := answering(t, `{"data":{"repository":null},
 		"errors":[{"type":"NOT_FOUND","message":"Could not resolve to a Repository"}]}`)
 
-	_, err := client.PullRequest(t.Context(), "owner", "repo", 1)
+	_, err := client.PullRequest(t.Context(), "", "owner", "repo", 1)
 	if !errors.Is(err, github.ErrNotFound) {
 		t.Errorf("PullRequest() = %v, want ErrNotFound", err)
 	}
@@ -343,7 +343,7 @@ func TestTheQueryAsksForWhatIsTracked(t *testing.T) {
 	recorder := filepath.Join(t.TempDir(), "arguments")
 	client := stubGH(t, fmt.Sprintf(`printf '%%s\n' "$@" > %s; echo '{"data":{"repository":null},"errors":[{"type":"NOT_FOUND","message":"x"}]}'`, recorder))
 
-	_, _ = client.PullRequest(t.Context(), "owner", "repo", 1)
+	_, _ = client.PullRequest(t.Context(), "", "owner", "repo", 1)
 
 	recorded, err := os.ReadFile(recorder)
 	if err != nil {
@@ -358,5 +358,71 @@ func TestTheQueryAsksForWhatIsTracked(t *testing.T) {
 		if !strings.Contains(query, wanted) {
 			t.Errorf("the query does not ask for %q", wanted)
 		}
+	}
+}
+
+// gh keeps one account active at a time and does not choose by directory, so the watcher has to
+// know which logins exist before it can look for a repository only one of them can see.
+func TestAccountsAreListedActiveFirst(t *testing.T) {
+	client := stubGH(t, `cat <<'STATUS'
+github.com
+  ✓ Logged in to github.com account work-login (keyring)
+  - Active account: false
+  - Git operations protocol: https
+  - Token: gho_************************************
+
+  ✓ Logged in to github.com account personal-login (keyring)
+  - Active account: true
+  - Git operations protocol: https
+  - Token: gho_************************************
+STATUS`)
+
+	accounts, err := client.Accounts(t.Context())
+	if err != nil {
+		t.Fatalf("Accounts() = %v, want nil", err)
+	}
+
+	if len(accounts) != 2 {
+		t.Fatalf("Accounts() = %v, want two logins", accounts)
+	}
+	if accounts[0] != "personal-login" {
+		t.Errorf("Accounts() = %v, want the active login first", accounts)
+	}
+}
+
+// Reading as a particular account must hand gh that account's token, and in the environment rather
+// than on the command line, where every process on the machine could read it.
+func TestReadingAsAnAccountPassesItsTokenInTheEnvironment(t *testing.T) {
+	recorder := filepath.Join(t.TempDir(), "seen")
+	client := stubGH(t, fmt.Sprintf(`
+if [ "$1" = "auth" ] && [ "$2" = "token" ]; then echo "gho_the-personal-token"; exit 0; fi
+printf 'token=%%s args=%%s\n' "$GH_TOKEN" "$*" > %s
+echo '{"data":{"repository":{"pullRequest":{"number":1,"state":"OPEN","author":{"login":"a"},
+  "comments":{"nodes":[]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]},"commits":{"nodes":[]}}}}}'
+`, recorder))
+
+	if _, err := client.PullRequest(t.Context(), "personal-login", "owner", "repo", 1); err != nil {
+		t.Fatalf("PullRequest() = %v, want nil", err)
+	}
+
+	seen, err := os.ReadFile(recorder)
+	if err != nil {
+		t.Fatalf("reading what the stub saw: %v", err)
+	}
+
+	line := string(seen)
+	if !strings.Contains(line, "token=gho_the-personal-token") {
+		t.Errorf("gh was not given the account's token: %q", line)
+	}
+
+	_, arguments, found := strings.Cut(line, "args=")
+	if !found {
+		t.Fatalf("the stub recorded nothing useful: %q", line)
+	}
+	if strings.Contains(arguments, "gho_the-personal-token") {
+		t.Error("the token was passed on the command line, where every process on the machine could read it")
+	}
+	if !strings.Contains(arguments, "graphql") {
+		t.Errorf("the query was not sent: %q", arguments)
 	}
 }

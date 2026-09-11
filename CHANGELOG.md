@@ -9,6 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A pull request watcher for GitHub. `lac pr watch owner/repository#number` keeps an eye on CI
+  results, the pull request's state, comments and review conversations, and tells the agents that
+  subscribed as soon as something changes. It reads through the `gh` CLI, backs off when GitHub is
+  unreachable, and keeps serving the last good reading marked as stale rather than erroring.
+- Repositories that belong to a second GitHub login are read as that login. `gh` keeps one active
+  account and does not choose one by directory, so a machine whose work repositories belong to one
+  login and personal ones to another could only see half of them; a watch now remembers which login
+  can see it.
 - One daemon per state directory. A second `lacd` against the same database and socket refuses to
   start, naming the process that holds it. The claim is an advisory lock the kernel drops with the
   process, so a crash leaves nothing to clear up.
