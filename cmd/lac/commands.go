@@ -37,6 +37,7 @@ func commands() []command {
 		{name: "worker", summary: "become a shared worker for a resource", run: runWorker},
 		{name: "mcp", summary: "serve LAC over MCP on stdin and stdout, for AI tools", run: runMCP},
 		{name: "skill", summary: "install the LAC skill for AI tools that read skills", run: runSkill},
+		{name: "pr", summary: "watch a pull request: watch, status, list, unwatch", run: runPR},
 		{name: "report", summary: "ask every agent what it is doing", run: runReport},
 		{name: "answer", summary: "answer a report request", run: runAnswer},
 		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},

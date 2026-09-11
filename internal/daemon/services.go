@@ -8,9 +8,11 @@ import (
 	"sadeq.uk/lac/internal/api"
 	"sadeq.uk/lac/internal/auth"
 	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/github"
 	"sadeq.uk/lac/internal/service/dispatch"
 	"sadeq.uk/lac/internal/service/leasing"
 	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/prwatch"
 	"sadeq.uk/lac/internal/service/registry"
 	"sadeq.uk/lac/internal/service/reporting"
 	"sadeq.uk/lac/internal/transport/telegram"
@@ -66,6 +68,10 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 	d.reporting = reporting.New(d.store, d.registry, d.messaging, reporting.Options{Logger: d.logger})
 
 	// The catalogue reads through settings() too, so a reloaded command list is live.
+	d.watcher = prwatch.New(d.store, github.New(github.Options{}), d.messaging, d.registry,
+		prwatch.Options{Logger: d.logger})
+
+	// The catalogue reads through settings() too, so a reloaded command list is live.
 	d.dispatch = dispatch.New(d.store, catalogue{daemon: d}, dispatch.Options{
 		WorkdirRoots: workdirRoots,
 		Logger:       d.logger,
@@ -75,6 +81,7 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 		Logger:   d.logger,
 		Notifier: d.notifier,
 		Reload:   d.Reload,
+		Watcher:  d.watcher,
 	}).Register(d.router)
 
 	if err := d.attachTelegram(); err != nil {

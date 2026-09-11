@@ -206,5 +206,8 @@ func (s *Store) Reports() core.ReportRepository { return reportRepository{s.quer
 // Tasks returns the dispatched-work repository.
 func (s *Store) Tasks() core.TaskRepository { return taskRepository{s.queries} }
 
+// Watches returns the watched-pull-request repository.
+func (s *Store) Watches() core.WatchRepository { return watchRepository{s.queries} }
+
 // Audit returns the append-only audit log.
 func (s *Store) Audit() core.AuditLog { return auditLog{s.queries} }

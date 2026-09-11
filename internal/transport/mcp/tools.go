@@ -133,6 +133,31 @@ func toolDefinitions() []tool {
 			}, []string{"task_id"}),
 		},
 		{
+			Name:  "lac_watch_pr",
+			Title: "Watch a pull request",
+			Description: "Follow a pull request and be told when something happens to it: CI " +
+				"finishing, a review arriving, a conversation being resolved, it being merged. Use " +
+				"it after opening a pull request so you learn that CI failed without sitting and " +
+				"asking. The updates arrive in lac_inbox.",
+			InputSchema: object(map[string]any{
+				"pull_request": property("string",
+					"The pull request, as owner/repository#number or a github.com URL."),
+			}, []string{"pull_request"}),
+		},
+		{
+			Name:  "lac_pr_status",
+			Title: "Where a pull request has got to",
+			Description: "Show a watched pull request: its state, each CI check, the review " +
+				"conversations still waiting on somebody, and what changed recently. Use it to find " +
+				"out what is left to do before a pull request can land. If the answer is marked " +
+				"stale, GitHub could not be reached and you are seeing the last thing that was true.",
+			InputSchema: object(map[string]any{
+				"pull_request": property("string", "The pull request, as owner/repository#number."),
+				"refresh": property("boolean",
+					"Read GitHub now rather than reporting what is already known. Use it right after pushing."),
+			}, []string{"pull_request"}),
+		},
+		{
 			Name:  "lac_report",
 			Title: "Answer the operator's report request",
 			Description: "Answer a request from the operator asking what you are working on. You " +
@@ -174,6 +199,8 @@ func toolHandlers() map[string]toolHandler {
 		"lac_ask_worker":      handleAskWorker,
 		"lac_worker_commands": handleWorkerCommands,
 		"lac_task":            handleTask,
+		"lac_watch_pr":        handleWatchPullRequest,
+		"lac_pr_status":       handlePullRequestStatus,
 	}
 }
 
@@ -515,6 +542,133 @@ func handleTask(ctx context.Context, _ *Server, client *lacclient.Client, argume
 	}
 
 	return textResult(describeTask(task))
+}
+
+type pullRequestArguments struct {
+	PullRequest string `json:"pull_request"`
+	Refresh     bool   `json:"refresh"`
+}
+
+func handleWatchPullRequest(
+	ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request pullRequestArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.PullRequest == "" {
+		return errorResult("Which pull request? Give pull_request as owner/repository#number.")
+	}
+
+	watch, err := client.WatchPullRequest(ctx, request.PullRequest)
+	if err != nil {
+		return errorResult("Could not watch %s: %v", request.PullRequest, err)
+	}
+
+	return textResult(fmt.Sprintf(
+		"Watching %s — %s.\n%s\n\nChanges will arrive in lac_inbox: CI results, reviews, "+
+			"comments, and whether it is merged.",
+		watch.Reference, watch.Title, describeWatch(watch)))
+}
+
+func handlePullRequestStatus(
+	ctx context.Context, _ *Server, client *lacclient.Client, arguments json.RawMessage,
+) callToolResult {
+	var request pullRequestArguments
+	if err := decode(arguments, &request); err != nil {
+		return errorResult("%v", err)
+	}
+	if request.PullRequest == "" {
+		return errorResult("Which pull request? Give pull_request as owner/repository#number.")
+	}
+
+	detail, err := client.PullRequestStatus(ctx, request.PullRequest, request.Refresh, false)
+	if err != nil {
+		if lacclient.ErrorCode(err) == lacclient.CodeNotFound {
+			return errorResult("%s is not being watched. Start with lac_watch_pr.", request.PullRequest)
+		}
+
+		return errorResult("Could not read %s: %v", request.PullRequest, err)
+	}
+
+	var report strings.Builder
+	fmt.Fprintf(&report, "%s — %s\n%s", detail.Watch.Reference, detail.Watch.Title, describeWatch(detail.Watch))
+
+	if failing := failingChecks(detail.Checks); len(failing) > 0 {
+		fmt.Fprintf(&report, "\n\nFailing checks: %s", strings.Join(failing, ", "))
+	}
+
+	unresolved := detail.UnresolvedThreads()
+	if len(unresolved) > 0 {
+		fmt.Fprintf(&report, "\n\n%d review conversation(s) waiting on somebody:", len(unresolved))
+		for _, thread := range unresolved {
+			where := thread.Path
+			if thread.Line > 0 {
+				where = fmt.Sprintf("%s:%d", thread.Path, thread.Line)
+			}
+			fmt.Fprintf(&report, "\n- %s: %s", where, firstCommentOf(thread))
+		}
+		report.WriteString("\n\nDeal with these before asking for the pull request to be merged.")
+	}
+
+	if len(detail.Changes) > 0 {
+		report.WriteString("\n\nRecently:")
+		for index, change := range detail.Changes {
+			if index >= 5 {
+				break
+			}
+			fmt.Fprintf(&report, "\n- %s", change.Summary)
+		}
+	}
+
+	return textResult(report.String())
+}
+
+// describeWatch is the line that matters: where it is, whether CI is happy, and whether any of it
+// can still be trusted.
+func describeWatch(watch lacclient.Watch) string {
+	state := watch.State
+	if watch.Draft {
+		state += " (draft)"
+	}
+
+	description := fmt.Sprintf("State: %s. CI: %s. Unresolved review conversations: %d.",
+		state, watch.Checks, watch.Unresolved)
+
+	if watch.Stale {
+		description += " This is the last thing that was true, not the current state: GitHub could " +
+			"not be reached."
+		if watch.LastError != "" {
+			description += " (" + watch.LastError + ")"
+		}
+	}
+
+	return description
+}
+
+func failingChecks(checks []lacclient.PullRequestCheck) []string {
+	failing := make([]string, 0, len(checks))
+	for _, check := range checks {
+		switch check.State {
+		case "failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale":
+			failing = append(failing, check.Name)
+		}
+	}
+
+	return failing
+}
+
+func firstCommentOf(thread lacclient.ReviewThread) string {
+	if len(thread.Comments) == 0 {
+		return ""
+	}
+
+	body := strings.TrimSpace(thread.Comments[0].Body)
+	if line, _, found := strings.Cut(body, "\n"); found {
+		return line
+	}
+
+	return body
 }
 
 type reportArguments struct {

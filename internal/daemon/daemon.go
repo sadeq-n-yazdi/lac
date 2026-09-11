@@ -17,6 +17,7 @@ import (
 	"sadeq.uk/lac/internal/service/dispatch"
 	"sadeq.uk/lac/internal/service/leasing"
 	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/prwatch"
 	"sadeq.uk/lac/internal/service/registry"
 	"sadeq.uk/lac/internal/service/reporting"
 	"sadeq.uk/lac/internal/singleton"
@@ -49,6 +50,7 @@ type Daemon struct {
 	leasing   *leasing.Service
 	reporting *reporting.Service
 	dispatch  *dispatch.Service
+	watcher   *prwatch.Service
 	notifier  *fanOutNotifier
 	telegram  *telegram.Bridge
 }
@@ -161,6 +163,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	go d.housekeeping(ctx)
 	go d.watchConfiguration(ctx)
 	go d.runTelegram(ctx)
+	go d.runPullRequestWatcher(ctx)
 
 	err := d.server.Serve(ctx, d.listener)
 
@@ -169,6 +172,27 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.logger.Info("lac daemon stopped")
 
 	return errors.Join(err, shutdownErr)
+}
+
+// runPullRequestWatcher follows the pull requests agents asked about, until the daemon stops.
+//
+// It registers itself on the roster first, so a change arrives from something with a name rather
+// than from the agent to itself.
+func (d *Daemon) runPullRequestWatcher(ctx context.Context) {
+	if d.watcher == nil {
+		return
+	}
+
+	registration, err := d.registry.Register(ctx, registry.RegisterRequest{
+		Name: prwatch.AgentName, Kind: "watcher", Workdir: "/", ProcessID: 0,
+	})
+	if err != nil {
+		d.logger.Error("the pull request watcher could not register", "error", err)
+	} else {
+		d.watcher.SetSender(registration.Agent.ID)
+	}
+
+	d.watcher.Run(ctx)
 }
 
 // runTelegram relays to the operator's phone until the daemon stops. A bridge that cannot start —

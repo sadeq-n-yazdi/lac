@@ -190,6 +190,40 @@ worker that lost the race to another is told at once and can give its slot back.
 A worker reports progress with `task.output`; the daemon pushes each chunk to the requester as a
 `task.output` notification, so a waiting requester sees the run rather than silence.
 
+### Watched pull requests
+
+| Method        | Parameters                                        | Returns          |
+|---------------|---------------------------------------------------|------------------|
+| `pr.watch`    | `pull_request`                                    | `{watch}`        |
+| `pr.status`   | `pull_request` or `watch_id`, `refresh`, `wait`   | watch detail     |
+| `pr.list`     | `all`                                             | `{watches[]}`    |
+| `pr.unwatch`  | `pull_request` or `watch_id`                      | `{watching}`     |
+
+`pull_request` is written the way a person writes it — `owner/repository#number`, or a pasted
+`https://github.com/owner/repository/pull/123`.
+
+The daemon reads GitHub through the `gh` command line, so LAC holds no credential of its own and
+sees exactly what your login sees. It polls; there is no inbound webhook, because there is no
+listener.
+
+Whoever calls `pr.watch` is subscribed, and each change arrives as an ordinary message of kind
+`pr-update` — so it waits in the inbox of an agent that was busy, and reaches a connected one at
+once. Changes are CI results, the state (opened, closed, merged, draft), pushes, comments, reviews,
+and review conversations appearing, being replied to, or being resolved.
+
+A watch view says how old it is:
+
+```jsonc
+{"watch":{"id":"watch_06g8…","reference":"sadeq-n-yazdi/lac#31","title":"feat: lac reload",
+  "state":"open","draft":false,"checks":"pending","unresolved_threads":2,
+  "observed_at":"2026-09-11T08:46:12Z","stale":false}}
+```
+
+`stale` is true when the last attempt failed or the last success is old. During a GitHub outage the
+last good answer is still returned, marked stale and carrying `last_error` — an agent acting on old
+information should know it is doing so. `refresh` reads GitHub now; `wait` blocks until the next
+reading, which is what to use straight after pushing.
+
 ### Reports
 
 | Method           | Parameters                            | Returns            |

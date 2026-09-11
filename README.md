@@ -27,6 +27,7 @@ LAC solves those three problems and nothing else.
 | **Resources**  | Named resources with a fixed capacity (`test` = 4 slots, `reviewer` = 1) and a fair, ordered queue.  |
 | **Reporting**  | Broadcast a report request and collect every agent's answer in one place.                            |
 | **Dispatch**   | Hand a job to a shared worker, which runs the operator's configured command in your directory.       |
+| **PR watching**| Follow a pull request and be told when CI finishes, a review lands, or a conversation is resolved.   |
 | **Interfaces** | A CLI, an MCP server so AI tools discover it automatically, and an optional Telegram bot for you.    |
 
 The core primitive is a **lease**: an agent asks for a slot on a resource, waits its turn in the queue, gets the slot,
@@ -100,6 +101,7 @@ lac send claude-b question 'are you touching the parser?'
 lac inbox --ack                          # read what was sent to you
 lac report "what are you working on?"    # ask every agent, and wait for the answers
 lac ask test                             # hand the job to the machine's shared worker
+lac pr watch sadeq-n-yazdi/lac#31        # and hear when its CI finishes
 ```
 
 There is no setup step: the first command registers this shell as an agent, named after the directory

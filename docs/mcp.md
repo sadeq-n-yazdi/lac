@@ -78,6 +78,8 @@ read it, and `lac skill path` to see where it would go.
 | `lac_worker_commands` | What a shared worker on this machine will run for you        |
 | `lac_ask_worker`   | Hand a job to a shared worker instead of running it yourself    |
 | `lac_task`         | Follow a job you handed off                                     |
+| `lac_watch_pr`     | Follow a pull request and hear when it changes                  |
+| `lac_pr_status`    | Where a pull request has got to, and what review is outstanding |
 
 Two read-only resources are exposed as well: `lac://agents` and `lac://resources`, for a client that
 would rather fetch state than spend a tool call.

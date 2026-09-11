@@ -18,6 +18,7 @@ type Store interface {
 	Leases() LeaseRepository
 	Reports() ReportRepository
 	Tasks() TaskRepository
+	Watches() WatchRepository
 	Audit() AuditLog
 
 	// InTransaction runs fn against a Store bound to a single write transaction. The transaction
@@ -161,6 +162,42 @@ type TaskRepository interface {
 	// ReleaseAbandoned moves a worker's running tasks back to the queue, for when that worker went
 	// away without finishing them. It returns the tasks it requeued.
 	ReleaseAbandoned(ctx context.Context, workerID string, at time.Time) ([]Task, error)
+}
+
+// WatchRepository stores watched pull requests, who is listening, and what changed.
+type WatchRepository interface {
+	// Create stores a new watch.
+	Create(ctx context.Context, watch Watch) error
+	// ByID returns one watch, or ErrNotFound.
+	ByID(ctx context.Context, watchID string) (Watch, error)
+	// ByReference returns the watch for a pull request, or ErrNotFound.
+	ByReference(ctx context.Context, owner, repository string, number int) (Watch, error)
+	// List returns every watch, oldest first.
+	List(ctx context.Context) ([]Watch, error)
+	// ListForAgent returns the watches an agent subscribed to.
+	ListForAgent(ctx context.Context, agentID string) ([]Watch, error)
+	// Due returns the watches whose next poll is at or before the given instant, soonest first.
+	Due(ctx context.Context, at time.Time, limit int) ([]Watch, error)
+	// RecordObservation stores a successful poll: the snapshot, what was copied out of it, and when
+	// to look again. It clears the failure count, because GitHub answered.
+	RecordObservation(ctx context.Context, watch Watch) error
+	// RecordFailure records that GitHub could not be reached, increments the failure count and sets
+	// the next attempt. The last good snapshot is left exactly as it was.
+	RecordFailure(ctx context.Context, watchID, reason string, at, nextPollAt time.Time) error
+	// Delete removes a watch and everything attached to it.
+	Delete(ctx context.Context, watchID string) error
+
+	// Subscribe adds an agent to a watch. Subscribing twice is not an error.
+	Subscribe(ctx context.Context, watchID, agentID string, at time.Time) error
+	// Unsubscribe removes an agent. Removing one that is not subscribed is not an error.
+	Unsubscribe(ctx context.Context, watchID, agentID string) error
+	// Subscribers returns the agents listening to a watch.
+	Subscribers(ctx context.Context, watchID string) ([]string, error)
+
+	// AppendEvent records a change.
+	AppendEvent(ctx context.Context, event WatchEvent) error
+	// Events returns the changes to a watch, newest first.
+	Events(ctx context.Context, watchID string, limit int) ([]WatchEvent, error)
 }
 
 // ReportRepository stores report requests and the answers to them.

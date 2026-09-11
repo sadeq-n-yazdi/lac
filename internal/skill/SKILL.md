@@ -100,7 +100,23 @@ output and exit status. Use it when you want the work done but do not need to wa
 name a configured job; you cannot supply a command line, so if what you need is not listed, do it
 yourself with a slot.
 
-## 4. Answer the operator when they ask
+## 4. Let the machine watch your pull request
+
+After opening a pull request, hand it to the watcher instead of checking it yourself:
+
+```
+lac_watch_pr(pull_request: "owner/repo#123")
+```
+
+You are then told in lac_inbox when CI finishes, when somebody reviews or comments, and when a
+review conversation is resolved. Ask where it has got to with `lac_pr_status`, which lists the
+failing checks and the review conversations still waiting on somebody — that is the list of what is
+left before it can land.
+
+If a status is marked stale, GitHub could not be reached and you are seeing the last thing that was
+true. Say so rather than reporting it as current.
+
+## 5. Answer the operator when they ask
 
 The operator can ask every agent at once what it is working on. The question arrives in your inbox
 as a message of kind `report-request`, carrying a `request_id`. Answer it promptly:
@@ -115,7 +131,7 @@ may be stuck".
 
 From a shell: `lac answer <request-id> "what you are doing"`.
 
-## 5. Report to the user
+## 6. Report to the user
 
 When the user asks what everyone is doing, or why something is waiting:
 
