@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- A binary installed with `go install sadeq.uk/lac/cmd/lac@<version>` reported its version as
+  `dev`, because only `make build` stamps one in. The details now fall back to the build
+  information the toolchain embeds, so an installed binary names the version it came from.
+- `lac version` printed `-dirty` twice on a build from a modified tree.
+
 ## [0.1.0] - 2026-09-11
 
 The first release: a working coordinator for the AI agents on one machine. They can talk to each
