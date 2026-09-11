@@ -177,7 +177,7 @@ func startDaemon(t *testing.T, resources []config.ResourceConfig) string {
 	configuration.Resources = resources
 	configuration.AllowedWorkdirRoots = []string{home, os.TempDir(), "/tmp"}
 
-	instance, err := daemon.New(t.Context(), configuration, quietLogger())
+	instance, err := daemon.New(t.Context(), configuration, config.Options{}, quietLogger())
 	if err != nil {
 		t.Fatalf("New() = %v, want nil", err)
 	}

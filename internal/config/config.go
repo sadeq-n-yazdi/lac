@@ -31,6 +31,9 @@ const (
 	DefaultLeaseTimeToLive = 15 * time.Minute
 	// DefaultShutdownGrace is how long in-flight calls have to finish when the daemon stops.
 	DefaultShutdownGrace = 5 * time.Second
+	// DefaultRestartDelay is how often the daemon looks at its configuration file, and the unit it
+	// counts quiet in before reloading a change.
+	DefaultRestartDelay = 5 * time.Second
 )
 
 // Config is the daemon's complete, validated configuration.
@@ -52,6 +55,10 @@ type Config struct {
 	DefaultLeaseTimeToLive Duration `yaml:"default_lease_time_to_live"`
 	// ShutdownGrace is how long in-flight calls have to finish on shutdown.
 	ShutdownGrace Duration `yaml:"shutdown_grace"`
+	// RestartDelay is how often the configuration file is examined, and the unit of quiet the
+	// daemon waits for before applying a change: a change is reloaded once the file has read the
+	// same three times running, which is three restart delays after the last edit.
+	RestartDelay Duration `yaml:"restart_delay"`
 	// LogLevel is one of debug, info, warn or error.
 	LogLevel string `yaml:"log_level"`
 	// Resources are defined at startup, so a fresh install already knows about the machine's
@@ -167,6 +174,7 @@ func defaults(paths Paths) Config {
 		AgentTimeToLive:        Duration(DefaultAgentTimeToLive),
 		DefaultLeaseTimeToLive: Duration(DefaultLeaseTimeToLive),
 		ShutdownGrace:          Duration(DefaultShutdownGrace),
+		RestartDelay:           Duration(DefaultRestartDelay),
 		LogLevel:               "info",
 		Capabilities: CapabilitiesConfig{
 			Resources:    []string{core.WildcardResource},
@@ -174,6 +182,24 @@ func defaults(paths Paths) Config {
 		},
 		Operators: []string{"operator", "telegram"},
 	}
+}
+
+// SourcePath returns the configuration file these options resolve to, and whether it is there.
+//
+// The daemon uses it to watch the file it was actually started from, so a reload re-reads the same
+// file rather than guessing at the default location.
+func SourcePath(opts Options) (path string, exists bool) {
+	paths, err := DefaultPaths()
+	if err != nil {
+		return "", false
+	}
+
+	path, _ = configFilePath(opts, paths)
+	if _, err := os.Stat(path); err != nil {
+		return path, false
+	}
+
+	return path, true
 }
 
 // configFilePath returns the file to read and whether the caller named it explicitly.
@@ -239,6 +265,7 @@ func (c Config) Validate() error {
 		{"agent_time_to_live", c.AgentTimeToLive},
 		{"default_lease_time_to_live", c.DefaultLeaseTimeToLive},
 		{"shutdown_grace", c.ShutdownGrace},
+		{"restart_delay", c.RestartDelay},
 	} {
 		if field.value <= 0 {
 			return fmt.Errorf("%w: %s must be positive, got %s", ErrInvalidConfig, field.name, field.value)
@@ -307,6 +334,12 @@ func (r ResourceConfig) Resource(defaultTimeToLive time.Duration) core.Resource 
 		LeaseTimeToLive: timeToLive,
 		Description:     r.Description,
 	}
+}
+
+// LockPath is the file the daemon locks to stop a second copy running against the same state.
+// It sits beside the database, because the database is what two daemons must never share.
+func (c Config) LockPath() string {
+	return filepath.Join(filepath.Dir(c.DatabasePath), "lacd.lock")
 }
 
 // WorkdirRoots returns the directories an agent may register a working directory under, falling

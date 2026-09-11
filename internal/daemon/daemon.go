@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"sadeq.uk/lac/internal/config"
@@ -18,6 +19,7 @@ import (
 	"sadeq.uk/lac/internal/service/messaging"
 	"sadeq.uk/lac/internal/service/registry"
 	"sadeq.uk/lac/internal/service/reporting"
+	"sadeq.uk/lac/internal/singleton"
 	"sadeq.uk/lac/internal/store/sqlite"
 	"sadeq.uk/lac/internal/transport/jsonrpc"
 	"sadeq.uk/lac/internal/transport/telegram"
@@ -26,13 +28,21 @@ import (
 
 // Daemon is a running LAC instance.
 type Daemon struct {
-	configuration config.Config
-	logger        *slog.Logger
-	store         *sqlite.Store
-	listener      *unixsock.Listener
-	server        *jsonrpc.Server
-	router        *jsonrpc.Router
-	startedAt     time.Time
+	// configuration is replaced wholesale by a reload, so everything that reads it does so through
+	// settings() rather than holding a copy from start-up.
+	configurationMutex sync.RWMutex
+	configuration      config.Config
+
+	// source is how the configuration was loaded, so a reload re-reads the same file.
+	source config.Options
+
+	logger    *slog.Logger
+	lock      *singleton.Lock
+	store     *sqlite.Store
+	listener  *unixsock.Listener
+	server    *jsonrpc.Server
+	router    *jsonrpc.Router
+	startedAt time.Time
 
 	registry  *registry.Service
 	messaging *messaging.Service
@@ -43,12 +53,16 @@ type Daemon struct {
 	telegram  *telegram.Bridge
 }
 
-// New prepares a daemon: it creates the directories, opens the database, applies migrations and
-// claims the socket. It does not serve anything yet, so a caller can still register methods.
+// New prepares a daemon: it takes the single-instance lock, creates the directories, opens the
+// database, applies migrations and claims the socket. It does not serve anything yet, so a caller
+// can still register methods.
 //
-// The socket is claimed last, so a start-up that fails for any other reason never disturbs a
+// source says how the configuration was loaded, so a reload can re-read the same file. The lock is
+// taken first and the socket claimed last, so a start-up that fails for any reason never disturbs a
 // daemon that is already running.
-func New(ctx context.Context, configuration config.Config, logger *slog.Logger) (*Daemon, error) {
+func New(
+	ctx context.Context, configuration config.Config, source config.Options, logger *slog.Logger,
+) (*Daemon, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -57,14 +71,23 @@ func New(ctx context.Context, configuration config.Config, logger *slog.Logger) 
 		return nil, err
 	}
 
-	store, err := sqlite.Open(ctx, configuration.DatabasePath)
+	// Before anything else: two daemons against one database and one socket would each serve half
+	// the agents and disagree about who holds what.
+	lock, err := singleton.Acquire(configuration.LockPath())
 	if err != nil {
 		return nil, err
 	}
 
+	store, err := sqlite.Open(ctx, configuration.DatabasePath)
+	if err != nil {
+		return nil, errors.Join(err, lock.Release())
+	}
+
 	daemon := &Daemon{
 		configuration: configuration,
+		source:        source,
 		logger:        logger,
+		lock:          lock,
 		store:         store,
 		router:        jsonrpc.NewRouter(),
 		startedAt:     time.Now().UTC(),
@@ -80,14 +103,14 @@ func New(ctx context.Context, configuration config.Config, logger *slog.Logger) 
 	daemon.registerMethods()
 
 	if err := daemon.attachServices(ctx); err != nil {
-		return nil, errors.Join(err, store.Close())
+		return nil, errors.Join(err, store.Close(), lock.Release())
 	}
 
 	// The socket is claimed last, so a start-up that fails for any other reason never disturbs a
 	// daemon that is already running.
 	listener, err := unixsock.Listen(ctx, unixsock.Options{Path: configuration.SocketPath, Logger: logger})
 	if err != nil {
-		return nil, errors.Join(err, store.Close())
+		return nil, errors.Join(err, store.Close(), lock.Release())
 	}
 	daemon.listener = listener
 
@@ -96,6 +119,28 @@ func New(ctx context.Context, configuration config.Config, logger *slog.Logger) 
 
 // Store exposes the storage layer, so services can be attached before serving starts.
 func (d *Daemon) Store() core.Store { return d.store }
+
+// settings returns the configuration as it stands, which a reload may have replaced.
+func (d *Daemon) settings() config.Config {
+	d.configurationMutex.RLock()
+	defer d.configurationMutex.RUnlock()
+
+	return d.configuration
+}
+
+// configPath is the configuration file to watch, or empty when the daemon was started without one.
+func (d *Daemon) configPath() string {
+	path, exists := config.SourcePath(d.source)
+	if !exists {
+		return ""
+	}
+
+	return path
+}
+
+// Commands returns the jobs a shared worker can be asked to run, as the daemon currently
+// understands them — which a reload may have changed.
+func (d *Daemon) Commands() []dispatch.Command { return d.dispatch.Commands() }
 
 // Router exposes the method router, so services can register their methods.
 func (d *Daemon) Router() *jsonrpc.Router { return d.router }
@@ -107,11 +152,14 @@ func (d *Daemon) SocketPath() string { return d.listener.Path() }
 func (d *Daemon) Run(ctx context.Context) error {
 	d.logger.Info("lac daemon started",
 		"socket", d.listener.Path(),
-		"database", d.configuration.DatabasePath,
+		"database", d.settings().DatabasePath,
+		"lock", d.lock.Path(),
 		"pid", os.Getpid())
 
-	// Housekeeping and the optional Telegram bridge run alongside serving and stop with it.
+	// Housekeeping, the configuration watcher and the optional Telegram bridge run alongside
+	// serving and stop with it.
 	go d.housekeeping(ctx)
+	go d.watchConfiguration(ctx)
 	go d.runTelegram(ctx)
 
 	err := d.server.Serve(ctx, d.listener)
@@ -136,7 +184,8 @@ func (d *Daemon) runTelegram(ctx context.Context) {
 	}
 }
 
-// Close releases the socket and the database. It is safe to call after Run.
+// Close releases the socket, the database and the single-instance lock, in that order: nothing
+// else may start until this daemon has let go of everything it held.
 func (d *Daemon) Close() error {
 	var closeErr error
 
@@ -150,6 +199,11 @@ func (d *Daemon) Close() error {
 			closeErr = errors.Join(closeErr, err)
 		}
 	}
+	if d.lock != nil {
+		if err := d.lock.Release(); err != nil {
+			closeErr = errors.Join(closeErr, err)
+		}
+	}
 
 	return closeErr
 }
@@ -157,9 +211,10 @@ func (d *Daemon) Close() error {
 // defineConfiguredResources applies the resources declared in the configuration file, so a fresh
 // install already knows this machine's limits without anyone having to run a command.
 func (d *Daemon) defineConfiguredResources(ctx context.Context) error {
-	defaultTimeToLive := time.Duration(d.configuration.DefaultLeaseTimeToLive)
+	settings := d.settings()
+	defaultTimeToLive := time.Duration(settings.DefaultLeaseTimeToLive)
 
-	for _, declared := range d.configuration.Resources {
+	for _, declared := range settings.Resources {
 		resource := declared.Resource(defaultTimeToLive)
 		if err := d.store.Resources().Define(ctx, resource); err != nil {
 			return fmt.Errorf("defining the configured resource %q: %w", resource.Name, err)

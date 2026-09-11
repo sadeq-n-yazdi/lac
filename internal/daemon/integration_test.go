@@ -75,7 +75,7 @@ func startDaemonWithCommands(
 		}
 	}
 
-	instance, err := daemon.New(t.Context(), configuration, quietLogger())
+	instance, err := daemon.New(t.Context(), configuration, config.Options{}, quietLogger())
 	if err != nil {
 		t.Fatalf("New() = %v, want nil", err)
 	}

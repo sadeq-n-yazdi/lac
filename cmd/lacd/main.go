@@ -1,5 +1,8 @@
 // Command lacd is the LAC coordination daemon. It listens on a Unix domain socket and arbitrates
 // messaging, resource leases and reporting between the AI agents running on this machine.
+//
+// Only one daemon runs against a given state directory: a second one refuses to start rather than
+// share a database and a socket with the first.
 package main
 
 import (
@@ -38,12 +41,14 @@ func run() error {
 		return nil
 	}
 
-	configuration, err := config.Load(config.Options{
+	source := config.Options{
 		ConfigPath:   *configPath,
 		SocketPath:   *socketPath,
 		DatabasePath: *databasePath,
 		LogLevel:     *logLevel,
-	})
+	}
+
+	configuration, err := config.Load(source)
 	if err != nil {
 		return err
 	}
@@ -55,7 +60,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	instance, err := daemon.New(ctx, configuration, logger)
+	instance, err := daemon.New(ctx, configuration, source, logger)
 	if err != nil {
 		return err
 	}
@@ -65,11 +70,37 @@ func run() error {
 		}
 	}()
 
+	// A hang-up reloads the configuration, which is the conventional way to ask a daemon to
+	// re-read itself without stopping what it is doing.
+	go reloadOnHangUp(ctx, instance, logger)
+
 	if err := instance.Run(ctx); err != nil {
 		return fmt.Errorf("serving: %w", err)
 	}
 
 	return nil
+}
+
+// reloadOnHangUp re-reads the configuration each time SIGHUP arrives, until the daemon stops.
+func reloadOnHangUp(ctx context.Context, instance *daemon.Daemon, logger *slog.Logger) {
+	hangUps := make(chan os.Signal, 1)
+	signal.Notify(hangUps, syscall.SIGHUP)
+	defer signal.Stop(hangUps)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-hangUps:
+			logger.Info("reloading the configuration on SIGHUP")
+
+			if err := instance.Reload(ctx); err != nil {
+				// A bad configuration must not stop a daemon that is working: it carries on with
+				// what it already had.
+				logger.Error("the configuration was not reloaded", "error", err)
+			}
+		}
+	}
 }
 
 func newLogger(level string) *slog.Logger {
