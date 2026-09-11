@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-11
+
 ### Fixed
 
 - `lac skill install` could not update a skill it had installed itself: it refused with "already
@@ -154,7 +156,8 @@ other, queue for the scarce things, hand work to a shared worker, and tell you w
 - CI on Linux and macOS: build, `go vet`, golangci-lint (including gosec), `govulncheck`, and the
   whole suite under the race detector.
 
-[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.1...v0.1.2
