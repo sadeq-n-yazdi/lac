@@ -118,6 +118,25 @@ func (r agentRepository) ByName(ctx context.Context, name string) (core.Agent, e
 	return agent, nil
 }
 
+// FindForDelivery prefers an active agent and falls back to a stale one, so a message addressed to
+// an agent that has merely gone quiet still reaches its inbox.
+func (r agentRepository) FindForDelivery(ctx context.Context, name string) (core.Agent, error) {
+	row := r.queries.QueryRowContext(ctx, `
+		SELECT `+agentColumns+`
+		  FROM agents
+		 WHERE name = ? AND state <> ?
+		 ORDER BY (state = ?) DESC, registered_at DESC
+		 LIMIT 1`,
+		name, string(core.AgentDeregistered), string(core.AgentActive))
+
+	agent, err := scanAgent(row)
+	if err != nil {
+		return core.Agent{}, translateError("finding agent "+name, err)
+	}
+
+	return agent, nil
+}
+
 func (r agentRepository) List(ctx context.Context, filter core.AgentFilter) ([]core.Agent, error) {
 	query := `SELECT ` + agentColumns + ` FROM agents`
 	conditions := make([]string, 0, 2)

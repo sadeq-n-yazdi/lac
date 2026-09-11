@@ -68,6 +68,8 @@ func run(arguments []string) error {
 		workdir    = flags.String("workdir", "", "the directory being worked in (default: the current one)")
 	)
 
+	// The top level stops at the first word on purpose: everything after the command name belongs
+	// to that command, including flags with the same names as these.
 	if err := flags.Parse(arguments); err != nil {
 		return err //nolint:wrapcheck // the flag package already printed the problem
 	}

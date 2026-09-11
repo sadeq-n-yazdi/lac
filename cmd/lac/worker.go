@@ -36,14 +36,14 @@ func runWorker(ctx context.Context, env *environment, arguments []string) error 
 		quiet    = flags.Bool("quiet", false, "do not echo what is running")
 	)
 
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 	if *resource == "" {
 		return errors.New("usage: lac worker --resource <name>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}

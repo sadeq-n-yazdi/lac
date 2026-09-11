@@ -36,60 +36,65 @@ type identity struct {
 // A command that had to register is a passing visitor, not a resident: the release function
 // deregisters it, so a shell full of one-shot commands does not fill the roster with names that
 // linger until their heartbeats run out.
-func (i identity) connect(ctx context.Context, socketPath string) (*lacclient.Client, func(), error) {
+//
+// The third result says whether this command had to register an identity of its own. Such an
+// identity lasts only as long as the command, so anything addressed to it afterwards has nowhere to
+// go — a caller that subscribes to something should say so rather than let somebody wait.
+func (i identity) connect(
+	ctx context.Context, socketPath string,
+) (client *lacclient.Client, release func(), ephemeral bool, err error) {
 	token := i.token
 	if token == "" {
 		token = os.Getenv("LAC_TOKEN")
 	}
 	if token == "" {
-		saved, err := readSavedToken()
-		if err != nil {
-			return nil, nil, err
+		saved, readErr := readSavedToken()
+		if readErr != nil {
+			return nil, nil, false, readErr
 		}
 		token = saved
 	}
 
-	client, err := lacclient.Dial(ctx, lacclient.Options{SocketPath: socketPath, Token: token})
+	client, err = lacclient.Dial(ctx, lacclient.Options{SocketPath: socketPath, Token: token})
 	if err != nil {
 		// A token that no longer works — the daemon's database was reset, the agent was
 		// deregistered — should not stop the command. Register again and carry on, which is what
 		// the operator wanted anyway.
 		if token == "" || lacclient.ErrorCode(err) != lacclient.CodeUnauthorised {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
 		fmt.Fprintln(os.Stderr, "lac: the saved token is no longer valid; registering again")
 
 		token = ""
 		if client, err = lacclient.Dial(ctx, lacclient.Options{SocketPath: socketPath}); err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 	}
 
 	closeOnly := func() { _ = client.Close() }
 
 	if token != "" {
-		return client, closeOnly, nil
+		return client, closeOnly, false, nil
 	}
 
 	name, err := i.resolveName()
 	if err != nil {
 		closeOnly()
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	workdir := i.workdir
 	if workdir == "" {
-		workdir, err = os.Getwd()
-		if err != nil {
+		if workdir, err = os.Getwd(); err != nil {
 			closeOnly()
-			return nil, nil, fmt.Errorf("resolving the working directory: %w", err)
+			return nil, nil, false, fmt.Errorf("resolving the working directory: %w", err)
 		}
 	}
 
 	if _, err := client.Register(ctx, name, i.kind, workdir, os.Getpid()); err != nil {
 		closeOnly()
-		return nil, nil, fmt.Errorf("registering as %q: %w", name, err)
+		return nil, nil, false, fmt.Errorf("registering as %q: %w", name, err)
 	}
 
 	// The release runs after the command has finished, when the caller's context is usually
@@ -97,7 +102,7 @@ func (i identity) connect(ctx context.Context, socketPath string) (*lacclient.Cl
 	return client, func() { //nolint:contextcheck // deregister makes a fresh, bounded context
 		deregister(client)
 		closeOnly()
-	}, nil
+	}, true, nil
 }
 
 // deregister retires a name this command claimed for itself, giving back anything it still holds.

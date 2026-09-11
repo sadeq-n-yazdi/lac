@@ -41,7 +41,7 @@ func runPRWatch(ctx context.Context, env *environment, arguments []string) error
 		return errors.New("usage: lac pr watch <owner/repository#number>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, ephemeral, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func runPRWatch(ctx context.Context, env *environment, arguments []string) error
 	// Changes are delivered to the agent that subscribed. A command run from a shell registers an
 	// identity for the length of the command and then lets it go, so say where the changes actually
 	// end up rather than letting somebody wait for a message that is not coming.
-	if env.identity.token == "" && env.identity.name == "" {
+	if ephemeral {
 		fmt.Fprintf(env.output, "\n\tthis shell has no lasting identity, so changes are recorded "+
 			"but not delivered anywhere\n")
 		fmt.Fprintf(env.output, "\tsee them with: lac pr status %s\n", watch.Reference)
@@ -79,14 +79,14 @@ func runPRStatus(ctx context.Context, env *environment, arguments []string) erro
 		wait    = flags.Bool("wait", false, "wait for the next reading, for use just after pushing")
 		threads = flags.Bool("threads", false, "show the review conversations in full")
 	)
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 	if flags.NArg() < 1 {
 		return errors.New("usage: lac pr status [flags] <owner/repository#number>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -147,11 +147,11 @@ func runPRList(ctx context.Context, env *environment, arguments []string) error 
 	// Everything by default: a watch belongs to the machine, and a one-shot command that registered
 	// a passing identity of its own would otherwise see an empty list a moment after creating one.
 	mine := flags.Bool("mine", false, "only the pull requests this agent subscribed to")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func runPRUnwatch(ctx context.Context, env *environment, arguments []string) err
 		return errors.New("usage: lac pr unwatch <owner/repository#number>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}

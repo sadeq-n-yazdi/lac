@@ -183,8 +183,8 @@ func (d *Daemon) runPullRequestWatcher(ctx context.Context) {
 		return
 	}
 
-	registration, err := d.registry.Register(ctx, registry.RegisterRequest{
-		Name: prwatch.AgentName, Kind: "watcher", Workdir: "/", ProcessID: 0,
+	registration, err := d.registry.RegisterInternal(ctx, registry.RegisterRequest{
+		Name: prwatch.AgentName, Kind: "watcher", ProcessID: 0,
 	})
 	if err != nil {
 		d.logger.Error("the pull request watcher could not register", "error", err)

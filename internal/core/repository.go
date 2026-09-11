@@ -46,8 +46,16 @@ type AgentRepository interface {
 	Update(ctx context.Context, agent Agent) error
 	// ByID returns one agent, or ErrNotFound.
 	ByID(ctx context.Context, agentID string) (Agent, error)
-	// ByName returns the live agent with this name, or ErrNotFound.
+	// ByName returns the active agent with this name, or ErrNotFound. It is the registration check:
+	// two agents may not answer to one name at the same time.
 	ByName(ctx context.Context, name string) (Agent, error)
+	// FindForDelivery returns the agent a message addressed to this name should go to, preferring
+	// an active one but accepting a stale one.
+	//
+	// A stale agent is quiet, not gone: its inbox should still accumulate, or "the message waits for
+	// the recipient" stops being true for exactly the agent most likely to need it. A deregistered
+	// agent said goodbye, and is not addressable.
+	FindForDelivery(ctx context.Context, name string) (Agent, error)
 	// List returns the agents matching the filter, oldest registration first.
 	List(ctx context.Context, filter AgentFilter) ([]Agent, error)
 	// Heartbeat records that the agent is still alive, returning ErrNotFound if it is not

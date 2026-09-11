@@ -20,8 +20,8 @@ func runSkill(_ context.Context, env *environment, arguments []string) error {
 		toStdout  = flags.Bool("print", false, "write the skill to stdout instead of installing it")
 	)
 
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
 	action := flags.Arg(0)

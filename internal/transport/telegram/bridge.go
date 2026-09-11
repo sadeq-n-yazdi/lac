@@ -125,10 +125,9 @@ func (b *Bridge) Run(ctx context.Context) error {
 // register puts the bridge on the roster, so agents can address the operator by name and the
 // bridge can ask everyone for a report.
 func (b *Bridge) register(ctx context.Context) error {
-	registration, err := b.services.Registry.Register(ctx, registry.RegisterRequest{
+	registration, err := b.services.Registry.RegisterInternal(ctx, registry.RegisterRequest{
 		Name:      AgentName,
 		Kind:      "telegram",
-		Workdir:   "/",
 		ProcessID: 0,
 	})
 	if err != nil {
