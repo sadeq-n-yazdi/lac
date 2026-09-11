@@ -7,6 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `lac skill install` could not update a skill it had installed itself: it refused with "already
+  exists and was not written by lac", and the only way through was to delete the file by hand. It
+  recognised its own copies by a phrase from the skill's description, and that phrase wraps across
+  two lines in the file it actually writes, so it never matched. The skill now carries a short,
+  unwrappable marker line, and copies installed before that marker existed are still recognised.
+
 ## [0.2.1] - 2026-09-11
 
 ### Changed
