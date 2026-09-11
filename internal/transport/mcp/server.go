@@ -195,7 +195,7 @@ func (s *Server) handleInitialize(incoming request) {
 			Tools:     &toolsCapability{},
 			Resources: &resourcesCapability{},
 		},
-		ServerInfo:   serverInfo{Name: "lac", Version: version.Version},
+		ServerInfo:   serverInfo{Name: "lac", Version: version.Current().Version},
 		Instructions: instructions,
 	})
 }
