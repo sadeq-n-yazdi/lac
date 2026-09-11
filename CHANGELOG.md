@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-11
+
 ### Added
 
 - `lac log`: what the agents have said to each other, in order, with who read it and who
@@ -127,7 +129,8 @@ other, queue for the scarce things, hand work to a shared worker, and tell you w
 - CI on Linux and macOS: build, `go vet`, golangci-lint (including gosec), `govulncheck`, and the
   whole suite under the race detector.
 
-[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sadeq-n-yazdi/lac/releases/tag/v0.1.0
