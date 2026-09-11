@@ -39,6 +39,15 @@ type environment struct {
 type command struct {
 	name    string
 	summary string
+	// personal marks a command that asks the daemon a question rather than doing work with it:
+	// reading the log, listing agents, asking everyone to report. With no --name these register
+	// under the operator's own name — which is the name their capabilities are written against —
+	// rather than under the directory they happen to be standing in.
+	//
+	// Commands that take part in the machine's work keep the directory-and-pid name, because
+	// `lac queue test` is far more useful when it says which project is waiting than when it says
+	// the same username three times.
+	personal bool
 	// run receives the arguments after the subcommand name.
 	run func(ctx context.Context, env *environment, arguments []string) error
 }
@@ -97,6 +106,8 @@ func run(arguments []string) error {
 	requested := flags.Arg(0)
 	for _, candidate := range commands() {
 		if candidate.name == requested {
+			env.identity.personal = candidate.personal
+
 			return candidate.run(ctx, env, flags.Args()[1:])
 		}
 	}

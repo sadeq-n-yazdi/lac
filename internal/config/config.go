@@ -63,6 +63,13 @@ type Config struct {
 	// daemon waits for before applying a change: a change is reloaded once the file has read the
 	// same three times running, which is three restart delays after the last edit.
 	RestartDelay Duration `yaml:"restart_delay"`
+	// DefaultAgentName is the name the CLI registers under when a person asks the daemon a
+	// question — reading the log, listing agents, asking everyone to report — and did not pass
+	// --name. Empty means the operating system username.
+	//
+	// It exists so that the capabilities written against a name in `operators` actually apply to
+	// the operator's own shell, which would otherwise register as the directory it stands in.
+	DefaultAgentName string `yaml:"default_agent_name"`
 	// MessageRetention is how long a message that every recipient acknowledged is kept, so that
 	// `lac log` can still show it. Unacknowledged messages are kept regardless, until they expire.
 	MessageRetention Duration `yaml:"message_retention"`
@@ -286,6 +293,14 @@ func (c Config) Validate() error {
 
 	for _, name := range c.Operators {
 		if err := core.ValidateName("operator name", name); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+		}
+	}
+
+	// Caught here rather than when somebody runs a command: a name the daemon would refuse is worth
+	// hearing about while you are editing the file that sets it.
+	if c.DefaultAgentName != "" {
+		if err := core.ValidateName("default_agent_name", c.DefaultAgentName); err != nil {
 			return fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 		}
 	}

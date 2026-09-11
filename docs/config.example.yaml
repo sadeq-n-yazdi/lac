@@ -34,6 +34,14 @@
 # delays after the last edit. `kill -HUP` reloads it at once instead. Default: 5s
 # restart_delay: 5s
 
+# The name your own shell registers under when you ask the daemon a question — `lac log`,
+# `lac agents`, `lac report` and the like — and did not pass --name. Commands that do work, such as
+# `lac run`, are still named after the directory they work in.
+#
+# Set this to whichever name your operator powers are written against below. Default: your operating
+# system username.
+# default_agent_name: you
+
 # How long a message that every recipient acknowledged is kept, so `lac log` can still show it.
 # Unacknowledged messages are kept regardless until they expire. Default: 24h
 # message_retention: 24h

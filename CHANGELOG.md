@@ -7,6 +7,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `default_agent_name`: the name your own shell registers under when you ask the daemon a question
+  and did not pass `--name`. It defaults to your operating system username, so `lac log`,
+  `lac agents` and `lac report` work from any directory without naming yourself every time —
+  previously they registered as `<directory>-<pid>`, which no operator policy is written against,
+  and the refusal named an agent you had never heard of.
+
+  Commands that take part in the machine's work — `run`, `acquire`, `ask`, `worker`, `task` — are
+  still named after the directory they work in, so `lac queue test` says which project is waiting
+  rather than repeating your username. A personal name that is already in use by another process
+  falls back to a unique one and says so, rather than refusing to run.
+
+  A directory with no usable name (a working directory of `/`) now also falls back to your name
+  instead of becoming another indistinguishable `agent-1234`.
+
 ## [0.2.2] - 2026-09-11
 
 ### Fixed

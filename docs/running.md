@@ -127,6 +127,27 @@ after the last edit. Resources, capabilities, operators, worker commands and mes
 live. The socket, the database and the Telegram bridge need a restart, and a reload says so rather
 than pretending. A configuration that does not parse leaves the running one alone.
 
+## Being yourself
+
+Capabilities are decided by the name an agent registers under, and a bare `lac` command in a project
+directory would otherwise register as `product-mygp-91106` — a name no operator policy mentions.
+
+So commands that ask a question rather than doing work register under your own name:
+`default_agent_name` from the configuration, or your operating system username when that is not set.
+Put the same name in `operators`:
+
+```yaml
+default_agent_name: you
+operators:
+  - you
+  - telegram
+```
+
+Then `lac log`, `lac agents`, `lac report`, `lac define` and `lac reload` work from any directory
+with no `--name`. Commands that take part in the work — `run`, `acquire`, `ask`, `worker`, `task` —
+keep the directory-and-pid name, so the queue still tells you which project is waiting. If two of
+your shells want the personal name at once, the second takes a unique one and says so.
+
 ## Checking it
 
 ```sh

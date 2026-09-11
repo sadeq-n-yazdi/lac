@@ -111,6 +111,11 @@ lac pr watch sadeq-n-yazdi/lac#31        # and hear when its CI finishes
 There is no setup step: the first command registers this shell as an agent, named after the directory
 it is in. Give it a stable identity with `lac --name claude-a register --save` if you would rather.
 
+Commands that only ask a question — `lac log`, `lac agents`, `lac report` — register under *your*
+name instead, so that the operator powers written against it apply without your having to pass
+`--name` every time. That name is `default_agent_name` in the configuration, and your operating
+system username when you have not set one.
+
 Resources come from your configuration file — copy [docs/config.example.yaml](docs/config.example.yaml)
 to `~/.config/lac/config.yaml` and edit it. An operator can also define one on the fly:
 
