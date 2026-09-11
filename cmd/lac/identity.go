@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/core"
 	"sadeq.uk/lac/pkg/lacclient"
 )
 
@@ -25,6 +28,10 @@ type identity struct {
 	kind string
 	// workdir is the directory being worked in.
 	workdir string
+	// personal marks a command that asks a question rather than doing work. With no --name it
+	// registers under the operator's own name instead of the directory it is standing in, so the
+	// capabilities written against that name in the configuration actually apply.
+	personal bool
 }
 
 // connect returns a client authenticated as this identity, and a function that releases it.
@@ -93,8 +100,30 @@ func (i identity) connect(
 	}
 
 	if _, err := client.Register(ctx, name, i.kind, workdir, os.Getpid()); err != nil {
-		closeOnly()
-		return nil, nil, false, fmt.Errorf("registering as %q: %w", name, err)
+		// Somebody else is already using this name — most often the operator's own second terminal,
+		// since a personal name is deliberately not unique. Take a name that is, rather than
+		// refusing to run the command.
+		//
+		// The fallback registers as an ordinary agent: it is a different name, so the capabilities
+		// written against the personal one do not follow it. Saying so beats a puzzling
+		// "may not read_the_message_log" from a command that worked a moment ago in another window.
+		if lacclient.ErrorCode(err) != lacclient.CodeAlreadyExists {
+			closeOnly()
+
+			return nil, nil, false, fmt.Errorf("registering as %q: %w", name, err)
+		}
+
+		taken := name
+		name = fmt.Sprintf("%s-%d", name, os.Getpid())
+
+		if _, err := client.Register(ctx, name, i.kind, workdir, os.Getpid()); err != nil {
+			closeOnly()
+
+			return nil, nil, false, fmt.Errorf("registering as %q: %w", name, err)
+		}
+
+		fmt.Fprintf(os.Stderr, "lac: %q is in use by another process, so this command is %q; "+
+			"operator powers written against %q do not apply to it\n", taken, name, taken)
 	}
 
 	// The release runs after the command has finished, when the caller's context is usually
@@ -123,11 +152,24 @@ func deregister(client *lacclient.Client) {
 	}
 }
 
-// resolveName derives an agent name when none was given: the directory being worked in, plus this
-// process's id, so two shells in the same project do not collide.
+// resolveName derives an agent name when none was given.
+//
+// A command that does work is named after the directory it works in, plus this process's id, so two
+// shells in the same project do not collide and `lac queue test` says which project is waiting.
+//
+// A command that only asks a question is named after the person running it, because that is the
+// name their capabilities are written against. Without this, reading the log from your own shell
+// meant remembering to pass --name every time, and forgetting it produced an "unauthorised" error
+// naming an agent you had never heard of.
 func (i identity) resolveName() (string, error) {
 	if i.name != "" {
 		return i.name, nil
+	}
+
+	if i.personal {
+		if personal := personalName(); personal != "" {
+			return personal, nil
+		}
 	}
 
 	workdir := i.workdir
@@ -140,10 +182,61 @@ func (i identity) resolveName() (string, error) {
 
 	base := sanitiseName(filepath.Base(workdir))
 	if base == "" {
+		// Nothing usable in the directory name — a workdir of "/", or one made entirely of
+		// characters a name may not contain. Better to be named after the person than to be one of
+		// several indistinguishable "agent-1234"s.
+		base = personalName()
+	}
+	if base == "" {
 		base = "agent"
 	}
 
 	return fmt.Sprintf("%s-%d", base, os.Getpid()), nil
+}
+
+// personalName is who the operator is: the configured default_agent_name, or failing that the
+// operating system username.
+//
+// The configuration is the daemon's, read here because it is the same machine and the same user,
+// and because the alternative — a second place to write your own name — is a place to get it wrong.
+// A configuration that cannot be read is not an error worth stopping for: the username is a good
+// answer on its own, and the command can still say who it is.
+//
+// It returns empty if neither yields a usable name, leaving the caller to fall back to the
+// directory.
+func personalName() string {
+	if configured := configuredAgentName(); configured != "" {
+		return configured
+	}
+
+	current, err := user.Current()
+	if err != nil {
+		return ""
+	}
+
+	// A username is not bound by the daemon's rules — "sadeq.yazdi" is fine, but a Windows-style
+	// "DOMAIN\user" or an accented name is not — so it goes through the same sanitising as a
+	// directory.
+	name := sanitiseName(current.Username)
+	if core.ValidateName("agent name", name) != nil {
+		return ""
+	}
+
+	return name
+}
+
+// configuredAgentName reads default_agent_name out of the daemon's configuration, if there is one.
+func configuredAgentName() string {
+	settings, err := config.Load(config.Options{})
+	if err != nil {
+		return ""
+	}
+
+	if core.ValidateName("agent name", settings.DefaultAgentName) != nil {
+		return ""
+	}
+
+	return settings.DefaultAgentName
 }
 
 // sanitiseName reduces a directory name to something an agent name may contain.
