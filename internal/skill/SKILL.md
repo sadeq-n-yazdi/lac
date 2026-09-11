@@ -168,3 +168,5 @@ then use your judgement about how much to run at once.
 - It does not tell you what to work on. It tells you who else is here and when it is your turn.
 - It never reaches outside this machine, except an optional Telegram bridge the operator sets up
   for their own notifications.
+
+<!-- Installed by `lac skill install`. Edit the skill in lac, not this copy. -->

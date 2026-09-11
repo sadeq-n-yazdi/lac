@@ -20,6 +20,11 @@ var content string
 // Name is the directory the skill is installed under.
 const Name = "lac"
 
+// OwnershipMarker is the line that says a skill file is lac's own copy and may be replaced by a
+// later `lac skill install`. It is deliberately one short line: anything longer risks being wrapped
+// by an editor or a formatter, and a marker that can be split is a marker that stops working.
+const OwnershipMarker = "<!-- Installed by `lac skill install`. Edit the skill in lac, not this copy. -->"
+
 // directoryMode and fileMode match what the surrounding skill directories normally use: readable
 // by the tools that look for them, writable only by their owner.
 const (
@@ -93,6 +98,19 @@ func Install(directory string) (Result, error) {
 // isOurSkill reports whether a file looks like a copy of this skill rather than somebody's own
 // work that happens to share the name.
 func isOurSkill(existing string) bool {
-	return strings.Contains(existing, "name: "+Name) &&
-		strings.Contains(existing, "local agents coordinator")
+	if !strings.Contains(existing, "name: "+Name) {
+		return false
+	}
+
+	// The marker is a single short line precisely so that it cannot be broken by the wrapping of
+	// the prose around it. An earlier version looked for a phrase from the description, which wraps
+	// across two lines and so never matched — leaving lac unable to update its own copy.
+	if strings.Contains(existing, OwnershipMarker) {
+		return true
+	}
+
+	// Copies installed before the marker existed are still ours to replace. A tool name is a safe
+	// way to recognise them: it is one word, so it cannot wrap, and nobody writing their own skill
+	// of this name would document lac's tools without meaning this skill.
+	return strings.Contains(existing, "lac_acquire_slot")
 }

@@ -112,7 +112,9 @@ func TestInstallingTwiceIsANoOp(t *testing.T) {
 }
 
 // An older copy must be replaced on upgrade, or the agents keep reading last month's advice.
-func TestInstallUpdatesAnOlderCopy(t *testing.T) {
+// A copy installed before the ownership marker existed is still ours, and must upgrade without the
+// operator having to delete anything. Anyone who installed lac before this release has one.
+func TestInstallUpdatesACopyFromBeforeTheMarker(t *testing.T) {
 	directory := t.TempDir()
 	target := filepath.Join(directory, "lac", "SKILL.md")
 
@@ -120,7 +122,10 @@ func TestInstallUpdatesAnOlderCopy(t *testing.T) {
 		t.Fatalf("creating the directory: %v", err)
 	}
 
-	older := "---\nname: lac\ndescription: an older version\n---\n\nThe local agents coordinator, once.\n"
+	// No marker, because it did not exist yet — but it documents lac's tools, which nobody else's
+	// skill would do.
+	older := "---\nname: lac\ndescription: an older version\n---\n\n" +
+		"Queue for a slot with lac_acquire_slot before running anything heavy.\n"
 	if err := os.WriteFile(target, []byte(older), 0o644); err != nil {
 		t.Fatalf("writing the older copy: %v", err)
 	}
@@ -139,6 +144,63 @@ func TestInstallUpdatesAnOlderCopy(t *testing.T) {
 	}
 	if string(written) != skill.Content() {
 		t.Error("the older copy was not replaced")
+	}
+}
+
+// The copy lac writes must be a copy lac can replace.
+//
+// This is the case the older test missed: it used a hand-written stand-in for "an older version"
+// rather than something lac had actually written, so it never noticed that the marker being looked
+// for — a phrase from the description — is wrapped across two lines in the real file and therefore
+// never matched. Installing an upgrade over your own previous install failed with "not written by
+// lac", and the only way out was to delete the file by hand.
+func TestAnInstalledCopyCanBeUpgraded(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "lac", "SKILL.md")
+
+	// Exactly what a previous version of lac left behind: this skill, with the text changed the way
+	// a new release would change it.
+	previous := strings.Replace(skill.Content(), "# LAC", "# LAC (an older release)", 1)
+	if previous == skill.Content() {
+		t.Fatal("the fixture did not differ from the current skill, so this proves nothing")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("creating the directory: %v", err)
+	}
+	if err := os.WriteFile(target, []byte(previous), 0o644); err != nil {
+		t.Fatalf("writing the previous version: %v", err)
+	}
+
+	result, err := skill.Install(directory)
+	if err != nil {
+		t.Fatalf("Install() over lac's own previous copy = %v, want nil", err)
+	}
+	if !result.Updated {
+		t.Error("Install() did not report that it replaced the previous version")
+	}
+
+	written, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("reading the result: %v", err)
+	}
+	if string(written) != skill.Content() {
+		t.Error("the previous version was not replaced")
+	}
+}
+
+// The marker has to actually be in the file we ship, and on one line. If it ever wraps, or somebody
+// edits it out of the skill, installing an upgrade breaks for everybody at once.
+func TestTheShippedSkillCarriesItsOwnershipMarker(t *testing.T) {
+	if !strings.Contains(skill.Content(), skill.OwnershipMarker) {
+		t.Errorf("the shipped skill does not contain %q, so lac cannot recognise its own copies",
+			skill.OwnershipMarker)
+	}
+
+	for _, line := range strings.Split(skill.Content(), "\n") {
+		if strings.Contains(line, "Installed by") && strings.TrimSpace(line) != skill.OwnershipMarker {
+			t.Errorf("the marker line is %q, want it whole and unwrapped", line)
+		}
 	}
 }
 
