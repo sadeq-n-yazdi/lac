@@ -7,37 +7,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Added
+## [0.1.0] - 2026-09-11
 
-- Dispatch: `lac ask <job>` hands work to a shared worker (`lac worker --resource test`), which runs
-  it in the requester's own directory and streams the output back. A requester names a *configured
-  job*, never a command line, and a worker must hold a slot on the resource like anybody else.
-- A Telegram bridge, off unless configured: `/agents`, `/resources`, `/queue`, `/report`, `/say` and
-  `/broadcast` from a phone, and a way for an agent to reach the operator when they are away. Gated
-  by a chat-ID allowlist that cannot be disabled; outbound long polling only, no listener.
-- Reports: `lac report` asks every agent what it is doing and collects the answers, naming anyone
-  who stayed silent. Agents answer with `lac_report` over MCP or `lac answer` from a shell.
-- `docs/protocol.md`: the method-by-method JSON-RPC reference, enough to write a client in another
-  language.
-- `lac mcp`: a Model Context Protocol server, so Claude Code, Codex and other MCP clients discover
-  LAC by themselves. Eight tools and two read-only resources, over the same client the CLI uses.
-- `lac skill install`: the bundled skill teaching an agent when to queue, whom to tell, and what to
-  read, installed to `~/.claude/skills/lac/SKILL.md`.
-- `internal/auth`: agent tokens stored as keyed hashes, and capability checks that deny by default.
-- `internal/service/registry`, `internal/service/messaging`, `internal/service/leasing`: the agent roster,
-  durable messaging, and the fair, capacity-bounded resource queue.
-- `internal/api`: the JSON-RPC method surface, with every call but registration behind a token.
-- `pkg/lacclient`: the public Go client for the daemon.
-- The `lac` command-line client, including `lac run --resource <name> -- <command>`.
-- `internal/core`: the domain vocabulary and the storage contracts, with no I/O.
-- `internal/config`: XDG path resolution and layered configuration with strict validation.
-- `internal/store/sqlite`: a pure-Go SQLite store with embedded, versioned migrations.
-- `internal/transport/unixsock`: a private Unix socket listener with kernel peer verification.
-- `internal/transport/jsonrpc`: the JSON-RPC 2.0 server, with concurrent calls and graceful shutdown.
-- `internal/daemon` and a working `lacd` serving `daemon.info` and `daemon.ping`.
-- Project foundation: README, MIT license, changelog, TODO roadmap, contributing guide, code of conduct and security
-  policy.
-- GitHub issue and pull request templates, CI workflow and Dependabot configuration.
-- Go module `code.sadeq.uk/lac`, Makefile, linter and pre-commit configuration.
+The first release: a working coordinator for the AI agents on one machine. They can talk to each
+other, queue for the scarce things, hand work to a shared worker, and tell you what they are doing.
 
-[Unreleased]: https://github.com/sadeq-n-yazdi/lac/commits/main
+### Coordination
+
+- **Shared resources with a fair queue.** A resource has a capacity — four concurrent test runs, one
+  shared reviewer — and agents queue for a slot. The check for room and the grant happen in one
+  write transaction, so capacity is never exceeded; the queue is served by priority, then by arrival,
+  and only the head of the queue may take a free slot. Waiters are woken, never left polling.
+- **`lac run --resource test -- make test`**, the one-liner an agent puts in front of anything heavy.
+  It waits its turn, runs the command, releases the slot however the command ends, and passes the
+  exit status straight through.
+- **Durable messaging.** Direct and topic messages, kept until the recipient acknowledges them, so an
+  agent that was busy or restarting still gets what it missed. Connected agents are pushed a
+  notification rather than polling.
+- **Reports.** `lac report` asks every agent what it is doing and collects the answers, naming anyone
+  who stayed silent.
+- **Dispatch.** `lac ask <job>` hands work to a shared worker (`lac worker --resource test`), which
+  runs it in the requester's own directory and streams the output back. A requester names a
+  *configured job*, never a command line.
+- **Nothing is stranded.** A slot comes back on exit, on failure, on a signal, on disconnect, on
+  deregistration, and by the reaper when a holder simply vanishes. A worker that dies mid-task
+  returns its work to the queue.
+
+### Interfaces
+
+- **`lacd`**, the daemon: starts from nothing, applies its own migrations, defines the resources in
+  your configuration, and drains cleanly on a signal.
+- **`lac`**, the command-line client: `run`, `ask`, `agents`, `send`, `inbox`, `queue`, `resources`,
+  `define`, `report`, `worker`, `tasks` and the rest, each with a `--json` form for agents.
+- **MCP server** (`lac mcp`): twelve tools and two read-only resources, so Claude Code, Codex and
+  other MCP clients discover LAC by themselves. Protocol version negotiated, not assumed.
+- **A skill** (`lac skill install`): teaches an agent when to queue, whom to tell, and what to read.
+  Embedded in the binary, so `go install` is enough.
+- **Telegram bridge**, off unless configured: `/agents`, `/resources`, `/queue`, `/report`, `/say`
+  and `/broadcast` from a phone, and a way for an agent to reach you when you are away.
+- **`pkg/lacclient`**, the public Go client — one implementation of the protocol, shared by the CLI,
+  the MCP server and the tests.
+
+### Security
+
+- No network listener. The daemon binds a Unix domain socket only; the Telegram bridge calls outward
+  and is never called into.
+- The socket directory is `0700` and the socket `0600`, and every connection's peer UID is checked
+  against the daemon's through the kernel — `LOCAL_PEERCRED` on darwin, `SO_PEERCRED` on linux, and
+  a refusal to serve at all on platforms LAC has not been taught.
+- Agents authenticate with a 256-bit token stored only as an HMAC keyed by a per-install secret, so a
+  copied database permits no offline guessing attack. Every authentication failure returns the same
+  message; the reason goes to the audit log.
+- Capabilities come from the operator's policy, never from the agent asking. Broadcasting, defining
+  resources and requesting reports are all gated.
+- The daemon executes nothing. A worker does, and only a command from the operator's configuration,
+  with no shell, in a directory checked against the allowed roots.
+- Every state change is appended to an audit log.
+
+### Project
+
+- Go module `code.sadeq.uk/lac`, no cgo — the SQLite driver is pure Go.
+- Storage is SQLite in WAL mode with embedded, versioned migrations; a newer schema is refused
+  rather than written through.
+- Documentation: [architecture](docs/architecture.md), [protocol](docs/protocol.md),
+  [MCP setup](docs/mcp.md), [Telegram setup](docs/telegram.md) and a commented example configuration.
+- CI on Linux and macOS: build, `go vet`, golangci-lint (including gosec), `govulncheck`, and the
+  whole suite under the race detector.
+
+[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/sadeq-n-yazdi/lac/releases/tag/v0.1.0

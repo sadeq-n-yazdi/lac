@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/sadeq-n-yazdi/lac/actions/workflows/ci.yml/badge.svg)](https://github.com/sadeq-n-yazdi/lac/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sadeq-n-yazdi/lac?sort=semver)](https://github.com/sadeq-n-yazdi/lac/releases)
 
 LAC is a small background daemon that lets the AI coding agents running on **your own machine** coordinate with each
 other — talk, queue for scarce local resources, and report back to you — over a Unix socket. Nothing leaves the machine
@@ -68,25 +69,24 @@ new front end means adding a transport, not touching business rules.
 
 ## Status
 
-Working, and used on the machine it was written on. Every planned milestone is done: the daemon,
-the CLI, the MCP server and skill, reports, the Telegram bridge and shared workers. Nothing is
-tagged yet, so expect the odd rough edge — see [TODO.md](TODO.md) for what was built and the
-[issue tracker](https://github.com/sadeq-n-yazdi/lac/issues) for anything outstanding.
+**v0.1.0** — working, and used on the machine it was written on. Every planned milestone is done:
+the daemon, the CLI, the MCP server and skill, reports, the Telegram bridge and shared workers. It
+is a first release, so expect the odd rough edge; see [CHANGELOG.md](CHANGELOG.md) for what it does
+and the [issue tracker](https://github.com/sadeq-n-yazdi/lac/issues) for anything outstanding.
 
 ## Install
 
 Requires Go 1.26 or newer. There is no cgo dependency — the SQLite driver is pure Go.
 
 ```sh
-go install code.sadeq.uk/lac/cmd/lacd@latest
-go install code.sadeq.uk/lac/cmd/lac@latest
+git clone https://github.com/sadeq-n-yazdi/lac.git
+cd lac
+make build      # lacd and lac in ./bin
 ```
 
-Or from a checkout:
-
-```sh
-make build      # binaries in ./bin
-```
+`go install code.sadeq.uk/lac/cmd/lac@latest` will work once `code.sadeq.uk` serves the one-line
+redirect the Go toolchain needs for that module path — see
+[docs/vanity-import.md](docs/vanity-import.md). Until then, build from a checkout.
 
 ## Quick start
 
