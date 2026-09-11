@@ -75,6 +75,10 @@ type Agent struct {
 	ProcessID int
 	// Capabilities is what this agent is allowed to do.
 	Capabilities Capabilities
+	// Internal marks one of the daemon's own components rather than a session somebody is working
+	// in. It is on the roster so it can be addressed by name, but nobody is behind it to answer a
+	// question, so it is not asked for reports.
+	Internal bool
 	// State is the agent's presence.
 	State AgentState
 	// RegisteredAt is when the agent first registered.

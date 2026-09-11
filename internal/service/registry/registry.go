@@ -88,6 +88,25 @@ type Registration struct {
 	Token string
 }
 
+// RegisterInternal admits one of the daemon's own components — the Telegram bridge, the pull
+// request watcher — which need a place on the roster so agents can address them by name.
+//
+// It skips the working-directory confinement, and is a separate method rather than a flag on the
+// request so that nothing arriving over the wire can reach it. The confinement exists to stop a
+// registration advertising a directory the operator did not sanction; these are parts of the daemon
+// that enforces it, and they work nowhere in particular.
+func (s *Service) RegisterInternal(ctx context.Context, request RegisterRequest) (Registration, error) {
+	if request.Workdir == "" {
+		request.Workdir = internalWorkdir
+	}
+
+	return s.register(ctx, request, true)
+}
+
+// internalWorkdir is what the daemon's own components report as their working directory. It is
+// shown in listings, and is deliberately not a real path anybody works in.
+const internalWorkdir = "/"
+
 // Register admits an agent and issues its token.
 //
 // A process re-registering under its own name reclaims its registration and gets a fresh token,
@@ -95,6 +114,13 @@ type Registration struct {
 // that is in use is refused, because two agents answering to one name makes every message
 // ambiguous.
 func (s *Service) Register(ctx context.Context, request RegisterRequest) (Registration, error) {
+	return s.register(ctx, request, false)
+}
+
+// register is the shared path. internal says whether the working-directory confinement applies.
+func (s *Service) register(
+	ctx context.Context, request RegisterRequest, internal bool,
+) (Registration, error) {
 	if err := core.ValidateName("agent name", request.Name); err != nil {
 		return Registration{}, err
 	}
@@ -102,9 +128,13 @@ func (s *Service) Register(ctx context.Context, request RegisterRequest) (Regist
 		return Registration{}, err
 	}
 
-	workdir, err := s.resolveWorkdir(request.Workdir)
-	if err != nil {
-		return Registration{}, err
+	workdir := request.Workdir
+	if !internal {
+		resolved, err := s.resolveWorkdir(request.Workdir)
+		if err != nil {
+			return Registration{}, err
+		}
+		workdir = resolved
 	}
 
 	now := s.now()
@@ -115,6 +145,7 @@ func (s *Service) Register(ctx context.Context, request RegisterRequest) (Regist
 		Workdir:         workdir,
 		ProcessID:       request.ProcessID,
 		Capabilities:    s.options.CapabilitiesFor(request.Name),
+		Internal:        internal,
 		State:           core.AgentActive,
 		RegisteredAt:    now,
 		LastHeartbeatAt: now,

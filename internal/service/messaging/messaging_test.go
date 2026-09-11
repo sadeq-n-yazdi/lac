@@ -372,3 +372,79 @@ func TestSubscribingToTheBroadcastTopicIsRefused(t *testing.T) {
 		t.Errorf("Subscribe(%q) = %v, want ErrInvalidArgument", core.BroadcastTopic, err)
 	}
 }
+
+// An agent that stopped heartbeating is quiet, not gone. Its inbox must still accumulate, or
+// "the message waits for the recipient" stops being true for exactly the agent most likely to
+// need it — one that was restarting, or busy for a long time.
+func TestAMessageReachesAnAgentThatWentQuiet(t *testing.T) {
+	subject := newHarness(t, nil)
+	sender := subject.newAgent(t, "claude-a")
+	quiet := subject.newAgent(t, "claude-b")
+
+	if err := subject.store.Agents().SetState(t.Context(), quiet.ID, core.AgentStale, baseTime); err != nil {
+		t.Fatalf("SetState() = %v, want nil", err)
+	}
+
+	sent, err := subject.service.Send(t.Context(), messaging.SendRequest{
+		FromAgentID: sender.ID, ToAgentName: quiet.Name,
+		Kind: "status", Body: []byte(`{"text":"your CI passed"}`),
+	})
+	if err != nil {
+		t.Fatalf("Send() to a stale agent = %v, want nil", err)
+	}
+	if len(sent.RecipientIDs) != 1 || sent.RecipientIDs[0] != quiet.ID {
+		t.Fatalf("recipients = %v, want the quiet agent", sent.RecipientIDs)
+	}
+
+	// And it is there when the agent comes back.
+	inbox, err := subject.service.Inbox(t.Context(), quiet.ID, 0)
+	if err != nil || len(inbox) != 1 {
+		t.Errorf("the quiet agent has %d messages waiting (%v), want 1", len(inbox), err)
+	}
+}
+
+// An agent that said goodbye is a different matter: it is not addressable, and pretending the
+// message went somewhere would be worse than saying so.
+func TestAMessageToADeregisteredAgentIsRefused(t *testing.T) {
+	subject := newHarness(t, nil)
+	sender := subject.newAgent(t, "claude-a")
+	gone := subject.newAgent(t, "claude-b")
+
+	if err := subject.store.Agents().SetState(t.Context(), gone.ID, core.AgentDeregistered, baseTime); err != nil {
+		t.Fatalf("SetState() = %v, want nil", err)
+	}
+
+	_, err := subject.service.Send(t.Context(), messaging.SendRequest{
+		FromAgentID: sender.ID, ToAgentName: gone.Name,
+		Kind: "status", Body: []byte(`{"a":1}`),
+	})
+	if !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("Send() to a deregistered agent = %v, want ErrNotFound", err)
+	}
+}
+
+// When a name has been used more than once, the live agent wins: a message should go to whoever is
+// answering to it now, not to a predecessor.
+func TestDeliveryPrefersTheActiveAgent(t *testing.T) {
+	subject := newHarness(t, nil)
+	sender := subject.newAgent(t, "claude-a")
+	first := subject.newAgent(t, "claude-b")
+
+	// The first one goes quiet, and another registers under the same name.
+	if err := subject.store.Agents().SetState(t.Context(), first.ID, core.AgentStale, baseTime); err != nil {
+		t.Fatalf("SetState() = %v, want nil", err)
+	}
+	second := subject.newAgent(t, "claude-b")
+
+	sent, err := subject.service.Send(t.Context(), messaging.SendRequest{
+		FromAgentID: sender.ID, ToAgentName: "claude-b",
+		Kind: "status", Body: []byte(`{"a":1}`),
+	})
+	if err != nil {
+		t.Fatalf("Send() = %v, want nil", err)
+	}
+	if len(sent.RecipientIDs) != 1 || sent.RecipientIDs[0] != second.ID {
+		t.Errorf("the message went to %v, want the agent answering to the name now (%s)",
+			sent.RecipientIDs, second.ID)
+	}
+}

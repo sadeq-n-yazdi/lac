@@ -11,6 +11,7 @@ import (
 	"sadeq.uk/lac/internal/service/dispatch"
 	"sadeq.uk/lac/internal/service/leasing"
 	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/prwatch"
 	"sadeq.uk/lac/internal/service/registry"
 	"sadeq.uk/lac/internal/service/reporting"
 	"sadeq.uk/lac/internal/transport/jsonrpc"
@@ -25,6 +26,7 @@ type API struct {
 	dispatch      *dispatch.Service
 	notifier      messaging.Notifier
 	reload        Reloader
+	watcher       *prwatch.Service
 	authenticator *auth.Authenticator
 	logger        *slog.Logger
 }
@@ -38,6 +40,8 @@ type Options struct {
 	// Reload re-reads the daemon's configuration. Without it, daemon.reload reports that this
 	// daemon cannot do so, rather than pretending it worked.
 	Reload Reloader
+	// Watcher follows pull requests. Without it, the pr.* methods say so plainly.
+	Watcher *prwatch.Service
 }
 
 // New returns an API over the given services.
@@ -63,6 +67,7 @@ func New(
 		dispatch:      dispatchService,
 		notifier:      options.Notifier,
 		reload:        options.Reload,
+		watcher:       options.Watcher,
 		authenticator: authenticator,
 		logger:        logger,
 	}
@@ -110,6 +115,11 @@ func (a *API) Register(router *jsonrpc.Router) {
 	router.Register("task.status", a.authenticated(a.handleTaskStatus))
 	router.Register("task.cancel", a.authenticated(a.handleTaskCancel))
 	router.Register("task.list", a.authenticated(a.handleTaskList))
+
+	router.Register("pr.watch", a.authenticated(a.handleWatchPullRequest))
+	router.Register("pr.status", a.authenticated(a.handleWatchStatus))
+	router.Register("pr.list", a.authenticated(a.handleWatchList))
+	router.Register("pr.unwatch", a.authenticated(a.handleUnwatch))
 
 	router.Register("report.request", a.authenticated(a.handleReportRequest))
 	router.Register("report.submit", a.authenticated(a.handleReportSubmit))

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -384,7 +385,9 @@ func TestATokenAuthenticatesANewConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Agents() = %v, want nil", err)
 	}
-	if len(agents) != 1 || agents[0].Name != "claude-a" {
+	// The daemon's own components are on the roster too, so look for the one that matters rather
+	// than counting.
+	if !slices.ContainsFunc(agents, func(agent lacclient.Agent) bool { return agent.Name == "claude-a" }) {
 		t.Errorf("Agents() = %+v, want the reconnected agent", agents)
 	}
 }

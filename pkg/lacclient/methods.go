@@ -40,6 +40,7 @@ type Agent struct {
 	Kind            string       `json:"kind"`
 	Workdir         string       `json:"workdir"`
 	ProcessID       int          `json:"pid"`
+	Internal        bool         `json:"internal,omitempty"`
 	State           string       `json:"state"`
 	Capabilities    Capabilities `json:"capabilities"`
 	RegisteredAt    string       `json:"registered_at"`
@@ -634,4 +635,129 @@ func (c *Client) Reload(ctx context.Context) (ReloadOutcome, error) {
 	err := c.Call(ctx, "daemon.reload", nil, &result)
 
 	return result, err
+}
+
+// Watch is a pull request LAC is keeping an eye on.
+type Watch struct {
+	ID         string `json:"id"`
+	Reference  string `json:"reference"`
+	Title      string `json:"title"`
+	URL        string `json:"url"`
+	State      string `json:"state"`
+	Draft      bool   `json:"draft"`
+	Checks     string `json:"checks"`
+	Unresolved int    `json:"unresolved_threads"`
+	// ObservedAt is when GitHub last answered, and Stale says whether that is long enough ago to
+	// matter. Acting on stale information is sometimes right; not knowing it is stale never is.
+	ObservedAt string `json:"observed_at"`
+	Stale      bool   `json:"stale"`
+	LastError  string `json:"last_error"`
+	Failures   int    `json:"failures"`
+}
+
+// PullRequestCheck is one CI result.
+type PullRequestCheck struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+	URL   string `json:"url"`
+}
+
+// ReviewThread is one review conversation on the diff.
+type ReviewThread struct {
+	ID       string               `json:"id"`
+	Path     string               `json:"path"`
+	Line     int                  `json:"line"`
+	Resolved bool                 `json:"resolved"`
+	Outdated bool                 `json:"outdated"`
+	Comments []PullRequestComment `json:"comments"`
+}
+
+// PullRequestComment is one comment, on the pull request or in a review conversation.
+type PullRequestComment struct {
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// WatchChange is one thing the watcher noticed.
+type WatchChange struct {
+	ID      int64  `json:"id"`
+	Kind    string `json:"kind"`
+	Summary string `json:"summary"`
+	At      string `json:"at"`
+}
+
+// WatchDetail is everything known about a watched pull request.
+type WatchDetail struct {
+	Watch    Watch                `json:"watch"`
+	Checks   []PullRequestCheck   `json:"checks"`
+	Threads  []ReviewThread       `json:"threads"`
+	Comments []PullRequestComment `json:"comments"`
+	Changes  []WatchChange        `json:"changes"`
+}
+
+// UnresolvedThreads returns the review conversations still waiting on somebody.
+func (d WatchDetail) UnresolvedThreads() []ReviewThread {
+	unresolved := make([]ReviewThread, 0, len(d.Threads))
+	for _, thread := range d.Threads {
+		if !thread.Resolved && !thread.Outdated {
+			unresolved = append(unresolved, thread)
+		}
+	}
+
+	return unresolved
+}
+
+// WatchPullRequest starts watching a pull request, named as owner/repository#number or as a URL.
+// Whoever watches it is told when its checks, state, comments or review threads change.
+func (c *Client) WatchPullRequest(ctx context.Context, reference string) (Watch, error) {
+	var result struct {
+		Watch Watch `json:"watch"`
+	}
+
+	err := c.Call(ctx, "pr.watch", map[string]any{"pull_request": reference}, &result)
+
+	return result.Watch, err
+}
+
+// PullRequestStatus returns everything known about a watched pull request.
+//
+// With refresh, GitHub is read now rather than reporting what is already known; with wait, the call
+// blocks until the next observation, which is what to use just after pushing.
+func (c *Client) PullRequestStatus(
+	ctx context.Context, reference string, refresh, wait bool,
+) (WatchDetail, error) {
+	params := map[string]any{"pull_request": reference}
+	if refresh {
+		params["refresh"] = true
+	}
+	if wait {
+		params["wait"] = true
+	}
+
+	var result WatchDetail
+	err := c.Call(ctx, "pr.status", params, &result)
+
+	return result, err
+}
+
+// WatchedPullRequests lists what this agent is watching, or everything on the machine.
+func (c *Client) WatchedPullRequests(ctx context.Context, all bool) ([]Watch, error) {
+	var result struct {
+		Watches []Watch `json:"watches"`
+	}
+
+	params := map[string]any{}
+	if all {
+		params["all"] = true
+	}
+
+	err := c.Call(ctx, "pr.list", params, &result)
+
+	return result.Watches, err
+}
+
+// UnwatchPullRequest stops this agent hearing about a pull request.
+func (c *Client) UnwatchPullRequest(ctx context.Context, reference string) error {
+	return c.Call(ctx, "pr.unwatch", map[string]any{"pull_request": reference}, nil)
 }

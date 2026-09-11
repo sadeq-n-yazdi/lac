@@ -37,6 +37,7 @@ func commands() []command {
 		{name: "worker", summary: "become a shared worker for a resource", run: runWorker},
 		{name: "mcp", summary: "serve LAC over MCP on stdin and stdout, for AI tools", run: runMCP},
 		{name: "skill", summary: "install the LAC skill for AI tools that read skills", run: runSkill},
+		{name: "pr", summary: "watch a pull request: watch, status, list, unwatch", run: runPR},
 		{name: "report", summary: "ask every agent what it is doing", run: runReport},
 		{name: "answer", summary: "answer a report request", run: runAnswer},
 		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},
@@ -56,7 +57,7 @@ func runVersion(_ context.Context, env *environment, _ []string) error {
 }
 
 func runInfo(ctx context.Context, env *environment, _ []string) error {
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -83,8 +84,8 @@ func runInfo(ctx context.Context, env *environment, _ []string) error {
 func runRegister(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("register", flag.ContinueOnError)
 	save := flags.Bool("save", false, "save the token for later commands")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
 	name, err := env.identity.resolveName()
@@ -137,11 +138,11 @@ func runRegister(ctx context.Context, env *environment, arguments []string) erro
 func runAgents(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("agents", flag.ContinueOnError)
 	all := flags.Bool("all", false, "include stale and deregistered agents")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -178,8 +179,8 @@ func runAgents(ctx context.Context, env *environment, arguments []string) error 
 func runSend(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("send", flag.ContinueOnError)
 	topic := flags.String("topic", "", "publish to this topic instead of a single agent")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
 	positional := flags.Args()
@@ -197,7 +198,7 @@ func runSend(ctx context.Context, env *environment, arguments []string) error {
 		recipient, kind, body = positional[0], positional[1], strings.Join(positional[2:], " ")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -240,11 +241,11 @@ func runInbox(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("inbox", flag.ContinueOnError)
 	acknowledge := flags.Bool("ack", false, "acknowledge the messages that are shown")
 	limit := flags.Int("limit", 0, "how many messages to read")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -288,7 +289,7 @@ func runInbox(ctx context.Context, env *environment, arguments []string) error {
 }
 
 func runResources(ctx context.Context, env *environment, _ []string) error {
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -329,14 +330,14 @@ func runDefine(ctx context.Context, env *environment, arguments []string) error 
 		timeToLive  = flags.Duration("ttl", 0, "how long a slot survives without renewal")
 		description = flags.String("description", "", "what this resource is")
 	)
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 	if flags.NArg() < 1 || *capacity < 1 {
 		return errors.New("usage: lac define --capacity <n> [flags] <resource>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -362,7 +363,7 @@ func runQueue(ctx context.Context, env *environment, arguments []string) error {
 		return errors.New("usage: lac queue <resource>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -399,14 +400,14 @@ func runAcquire(ctx context.Context, env *environment, arguments []string) error
 		noWait   = flags.Bool("no-wait", false, "fail immediately if the resource is full")
 		timeout  = flags.Duration("timeout", 0, "give up after this long")
 	)
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 	if flags.NArg() < 1 {
 		return errors.New("usage: lac acquire [flags] <resource>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -435,7 +436,7 @@ func runRelease(ctx context.Context, env *environment, arguments []string) error
 		return errors.New("usage: lac release <lease-id>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -455,7 +456,7 @@ func runRelease(ctx context.Context, env *environment, arguments []string) error
 }
 
 func runHeld(ctx context.Context, env *environment, _ []string) error {
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -484,7 +485,7 @@ func runHeld(ctx context.Context, env *environment, _ []string) error {
 }
 
 func runDeregister(ctx context.Context, env *environment, _ []string) error {
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -538,8 +539,8 @@ func shortTime(value string) string {
 func runReport(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("report", flag.ContinueOnError)
 	deadline := flags.Duration("deadline", 30*time.Second, "how long to wait for answers")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
 	question := strings.Join(flags.Args(), " ")
@@ -547,7 +548,7 @@ func runReport(ctx context.Context, env *environment, arguments []string) error 
 		question = "What are you working on right now?"
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -586,7 +587,7 @@ func runAnswer(ctx context.Context, env *environment, arguments []string) error 
 		return errors.New("usage: lac answer <request-id> <what you are doing>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -614,14 +615,14 @@ func runAsk(ctx context.Context, env *environment, arguments []string) error {
 		background = flags.Bool("background", false, "return as soon as it is queued")
 		timeout    = flags.Duration("timeout", 0, "give up waiting after this long; the work carries on")
 	)
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 	if flags.NArg() < 1 {
 		return errors.New("usage: lac ask [flags] <command>   (lac commands lists what you can ask for)")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -684,11 +685,11 @@ func reportTask(env *environment, task lacclient.Task) error {
 func runTasks(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("tasks", flag.ContinueOnError)
 	limit := flags.Int("limit", 0, "how many to show")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -721,14 +722,14 @@ func runTasks(ctx context.Context, env *environment, arguments []string) error {
 func runTaskStatus(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("task", flag.ContinueOnError)
 	wait := flags.Bool("wait", false, "wait until it finishes")
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 	if flags.NArg() < 1 {
 		return errors.New("usage: lac task [--wait] <task-id>")
 	}
 
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -756,7 +757,7 @@ func runTaskStatus(ctx context.Context, env *environment, arguments []string) er
 
 // runCommands lists what a shared worker on this machine can be asked to do.
 func runCommands(ctx context.Context, env *environment, _ []string) error {
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -792,7 +793,7 @@ func runCommands(ctx context.Context, env *environment, _ []string) error {
 // The daemon picks a change up by itself once the file has settled, and answers SIGHUP; this is the
 // same thing without having to find the process id.
 func runReload(ctx context.Context, env *environment, _ []string) error {
-	client, release, err := env.identity.connect(ctx, env.socketPath)
+	client, release, _, err := env.identity.connect(ctx, env.socketPath)
 	if err != nil {
 		return err
 	}
@@ -822,4 +823,61 @@ func runReload(ctx context.Context, env *environment, _ []string) error {
 	}
 
 	return nil
+}
+
+// parseAnywhere parses flags whether they come before or after the positional arguments.
+//
+// The flag package stops at the first word that is not a flag, so `lac pr status owner/repo#1
+// --refresh` silently ignores the flag — which is exactly how a person writes it, and a flag that
+// is quietly dropped is worse than one that is refused. This reorders the arguments first, using
+// the set's own knowledge of which flags take a value, and then parses normally.
+//
+// Everything after a bare `--` is left alone, so `lac run --resource test -- go test -race ./...`
+// still passes -race to the command rather than to lac.
+func parseAnywhere(flags *flag.FlagSet, arguments []string) error {
+	var flagTokens, positional []string
+
+	for index := 0; index < len(arguments); index++ {
+		token := arguments[index]
+
+		switch {
+		case token == "--":
+			positional = append(positional, arguments[index+1:]...)
+			index = len(arguments)
+
+		case len(token) > 1 && strings.HasPrefix(token, "-"):
+			flagTokens = append(flagTokens, token)
+			if takesValue(flags, token) && index+1 < len(arguments) {
+				index++
+				flagTokens = append(flagTokens, arguments[index])
+			}
+
+		default:
+			positional = append(positional, token)
+		}
+	}
+
+	if err := flags.Parse(append(flagTokens, positional...)); err != nil {
+		return fmt.Errorf("reading the arguments: %w", err)
+	}
+
+	return nil
+}
+
+// takesValue reports whether a flag consumes the word after it. A boolean does not, and neither
+// does one written as --name=value.
+func takesValue(flags *flag.FlagSet, token string) bool {
+	name := strings.TrimLeft(token, "-")
+	if _, _, attached := strings.Cut(name, "="); attached {
+		return false
+	}
+
+	defined := flags.Lookup(name)
+	if defined == nil {
+		return false
+	}
+
+	boolean, isBoolean := defined.Value.(interface{ IsBoolFlag() bool })
+
+	return !isBoolean || !boolean.IsBoolFlag()
 }

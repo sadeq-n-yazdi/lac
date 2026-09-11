@@ -303,3 +303,29 @@ func sanitise(name string) string {
 
 	return string(cleaned)
 }
+
+// The daemon's own components — the Telegram bridge, the pull request watcher — need a place on the
+// roster so agents can address them by name. They work nowhere in particular, so the working
+// directory confinement must not keep them off it.
+func TestInternalComponentsCanRegister(t *testing.T) {
+	subject := newHarness(t, registry.Options{WorkdirRoots: []string{"/home/user/code"}})
+
+	registration, err := subject.service.RegisterInternal(t.Context(), registry.RegisterRequest{
+		Name: "pr-watcher", Kind: "watcher",
+	})
+	if err != nil {
+		t.Fatalf("RegisterInternal() = %v, want nil", err)
+	}
+	if registration.Agent.Name != "pr-watcher" {
+		t.Errorf("name = %q, want pr-watcher", registration.Agent.Name)
+	}
+
+	// An ordinary registration from the same place is still refused: the confinement is only
+	// skipped for the daemon's own parts.
+	_, err = subject.service.Register(t.Context(), registry.RegisterRequest{
+		Name: "claude-a", Kind: "claude", Workdir: "/", ProcessID: 1,
+	})
+	if !errors.Is(err, core.ErrInvalidArgument) {
+		t.Errorf("Register() outside the roots = %v, want ErrInvalidArgument", err)
+	}
+}

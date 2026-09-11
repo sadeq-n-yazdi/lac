@@ -162,9 +162,11 @@ func (s *Service) resolveRecipients(
 	ctx context.Context, tx core.Store, request SendRequest, senderID string,
 ) ([]string, error) {
 	if request.ToAgentName != "" {
-		recipient, err := tx.Agents().ByName(ctx, request.ToAgentName)
+		// An agent that has gone quiet is still addressable: the message waits in its inbox until
+		// it comes back, which is the whole point of storing it rather than pushing it.
+		recipient, err := tx.Agents().FindForDelivery(ctx, request.ToAgentName)
 		if err != nil {
-			return nil, fmt.Errorf("no live agent is called %q: %w", request.ToAgentName, err)
+			return nil, fmt.Errorf("no agent is called %q: %w", request.ToAgentName, err)
 		}
 
 		return []string{recipient.ID}, nil

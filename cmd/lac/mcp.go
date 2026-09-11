@@ -27,8 +27,8 @@ func runMCP(ctx context.Context, env *environment, arguments []string) error {
 		verbose = flags.Bool("verbose", false, "log to stderr")
 	)
 
-	if err := flags.Parse(arguments); err != nil {
-		return err //nolint:wrapcheck // the flag package already printed the problem
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
 	}
 
 	// stdout carries the protocol, so every diagnostic goes to stderr.
