@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/dispatch"
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/dispatch"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
 // TaskView is a dispatched piece of work as clients see it.

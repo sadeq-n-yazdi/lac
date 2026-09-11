@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/id"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/id"
 )
 
 // Options configure a Service.

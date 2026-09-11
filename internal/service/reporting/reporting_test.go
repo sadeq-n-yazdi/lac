@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/service/messaging"
-	"code.sadeq.uk/lac/internal/service/registry"
-	"code.sadeq.uk/lac/internal/service/reporting"
-	"code.sadeq.uk/lac/internal/store/sqlite"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/registry"
+	"sadeq.uk/lac/internal/service/reporting"
+	"sadeq.uk/lac/internal/store/sqlite"
 )
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }

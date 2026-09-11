@@ -84,9 +84,9 @@ cd lac
 make build      # lacd and lac in ./bin
 ```
 
-`go install code.sadeq.uk/lac/cmd/lac@latest` will work once `code.sadeq.uk` serves the one-line
-redirect the Go toolchain needs for that module path — see
-[docs/vanity-import.md](docs/vanity-import.md). Until then, build from a checkout.
+`go install sadeq.uk/lac/cmd/lac@latest` will work once the page at `sadeq.uk/lac` names this module
+rather than the old `code.sadeq.uk/lac` — one word, see [docs/vanity-import.md](docs/vanity-import.md).
+Until then, build from a checkout.
 
 ## Quick start
 

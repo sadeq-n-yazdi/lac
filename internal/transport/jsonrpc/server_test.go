@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
 )
 
 // client is a minimal JSON-RPC client, enough to drive the server from a test.

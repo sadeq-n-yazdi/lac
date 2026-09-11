@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.sadeq.uk/lac/pkg/lacclient"
+	"sadeq.uk/lac/pkg/lacclient"
 )
 
 // toolHandler runs one tool. It never returns an error: a failure the model should read about

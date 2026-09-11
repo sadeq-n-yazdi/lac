@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 type reportRepository struct{ queries querier }

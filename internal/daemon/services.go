@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"code.sadeq.uk/lac/internal/api"
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/service/dispatch"
-	"code.sadeq.uk/lac/internal/service/leasing"
-	"code.sadeq.uk/lac/internal/service/messaging"
-	"code.sadeq.uk/lac/internal/service/registry"
-	"code.sadeq.uk/lac/internal/service/reporting"
-	"code.sadeq.uk/lac/internal/transport/telegram"
+	"sadeq.uk/lac/internal/api"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/service/dispatch"
+	"sadeq.uk/lac/internal/service/leasing"
+	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/registry"
+	"sadeq.uk/lac/internal/service/reporting"
+	"sadeq.uk/lac/internal/transport/telegram"
 )
 
 // housekeepingInterval is how often the daemon looks for abandoned leases and silent agents. It is

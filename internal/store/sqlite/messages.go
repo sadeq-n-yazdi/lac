@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 type messageRepository struct{ queries querier }

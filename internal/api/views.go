@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // The wire types are defined here rather than reusing the domain types directly, so that renaming

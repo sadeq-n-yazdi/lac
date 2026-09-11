@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/id"
-	"code.sadeq.uk/lac/internal/service/messaging"
-	"code.sadeq.uk/lac/internal/service/registry"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/id"
+	"sadeq.uk/lac/internal/service/messaging"
+	"sadeq.uk/lac/internal/service/registry"
 )
 
 // MessageKind is the kind given to the message that carries a report request, so an agent can

@@ -101,4 +101,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - code.sadeq.uk/lac
+        - sadeq.uk/lac

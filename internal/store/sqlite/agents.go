@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 type agentRepository struct{ queries querier }

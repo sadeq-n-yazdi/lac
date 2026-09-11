@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 func TestValidateName(t *testing.T) {

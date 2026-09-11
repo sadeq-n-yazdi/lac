@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // Version is the only protocol version this server speaks.

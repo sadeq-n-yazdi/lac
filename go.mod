@@ -1,4 +1,4 @@
-module code.sadeq.uk/lac
+module sadeq.uk/lac
 
 go 1.26.0
 

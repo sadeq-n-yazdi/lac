@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // Instants are stored as microseconds since the Unix epoch, UTC. SQLite has no time type, and a

@@ -1,63 +1,59 @@
-# Making `go install code.sadeq.uk/lac/...` work
+# Making `go install sadeq.uk/lac/...` work
 
-The module is called `code.sadeq.uk/lac`, but the code lives on GitHub. For the Go toolchain to
-connect the two, `code.sadeq.uk` has to serve one small page saying where the repository is. Until
-it does, `go install code.sadeq.uk/lac/cmd/lac@latest` fails with:
+The module is called `sadeq.uk/lac`, but the code lives on GitHub. For the Go toolchain to connect
+the two, `sadeq.uk` has to serve one small page saying where the repository is.
 
+`https://sadeq.uk/lac?go-get=1` already serves such a page. **It names the wrong module**, so
+`go install` still fails:
+
+```html
+<!-- what is served today -->
+<meta name="go-import" content="code.sadeq.uk/lac git https://github.com/sadeq-n-yazdi/lac">
 ```
-unrecognized import path "code.sadeq.uk/lac/cmd/lac": reading
-https://code.sadeq.uk/lac/cmd/lac?go-get=1: 404 Not Found
-```
+
+The first field has to match the module path exactly. The toolchain asks about `sadeq.uk/lac`, is
+told about `code.sadeq.uk/lac`, and refuses the mismatch.
 
 Building from a checkout works regardless; this is only about installing by module path.
 
-## What to publish
+## The one-word fix
 
-`code.sadeq.uk` is served by GitHub Pages. Add one file to whichever repository backs it, at
-**`lac/index.html`**:
+On whichever repository backs `sadeq.uk`, in the page served at `/lac`, drop the `code.` prefix:
 
 ```html
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="go-import" content="code.sadeq.uk/lac git https://github.com/sadeq-n-yazdi/lac">
-    <meta name="go-source" content="code.sadeq.uk/lac
-      https://github.com/sadeq-n-yazdi/lac
-      https://github.com/sadeq-n-yazdi/lac/tree/main{/dir}
-      https://github.com/sadeq-n-yazdi/lac/blob/main{/dir}/{file}#L{line}">
-    <meta http-equiv="refresh" content="0; url=https://github.com/sadeq-n-yazdi/lac">
-  </head>
-  <body>
-    Redirecting to <a href="https://github.com/sadeq-n-yazdi/lac">github.com/sadeq-n-yazdi/lac</a>.
-  </body>
-</html>
+<meta name="go-import" content="sadeq.uk/lac git https://github.com/sadeq-n-yazdi/lac">
 ```
 
-The `go-import` line is the part that matters: it tells the toolchain the module rooted at
-`code.sadeq.uk/lac` is a git repository at that GitHub URL. `go-source` makes pkg.go.dev link to
-the right files, and the refresh sends a person who follows the link somewhere useful.
+While you are there, `go-source` makes pkg.go.dev link to the right files:
 
-Nothing is needed for the subdirectories. The toolchain asks for `code.sadeq.uk/lac/cmd/lac?go-get=1`
-first, and when that is not found it walks up to `code.sadeq.uk/lac?go-get=1`, which is this file.
+```html
+<meta name="go-source" content="sadeq.uk/lac
+  https://github.com/sadeq-n-yazdi/lac
+  https://github.com/sadeq-n-yazdi/lac/tree/main{/dir}
+  https://github.com/sadeq-n-yazdi/lac/blob/main{/dir}/{file}#L{line}">
+```
 
-If the Pages site is built by Jekyll, either add empty front matter (`---` twice at the top of the
-file) or put a `.nojekyll` file at the repository root, so the HTML is served as written.
+Nothing is needed for the subdirectories. The toolchain asks for `sadeq.uk/lac/cmd/lac?go-get=1`
+first, and when that is not found it walks up to `sadeq.uk/lac?go-get=1`, which is this page.
+
+If the site is built by Jekyll, either add empty front matter (`---` twice at the top of the file)
+or put a `.nojekyll` file at the repository root, so the HTML is served as written.
 
 ## Checking it worked
 
 ```sh
-curl "https://code.sadeq.uk/lac?go-get=1" | grep go-import
-go install code.sadeq.uk/lac/cmd/lac@latest
-go install code.sadeq.uk/lac/cmd/lacd@latest
+curl "https://sadeq.uk/lac?go-get=1" | grep go-import
+go install sadeq.uk/lac/cmd/lac@latest
+go install sadeq.uk/lac/cmd/lacd@latest
 ```
 
-The first should print the meta tag; the other two should put `lac` and `lacd` in
-`$(go env GOPATH)/bin`.
+The first should print a meta tag naming `sadeq.uk/lac`; the other two should put `lac` and `lacd`
+in `$(go env GOPATH)/bin`.
+
+The module proxy caches what it fetches, so if you tried an install while the old page was up, give
+it a few minutes or test with `GOPROXY=direct` to go straight to the source.
 
 ## If you would rather not
 
 Change the module path in `go.mod` to `github.com/sadeq-n-yazdi/lac` and update the imports; the
-toolchain then resolves it with no page to publish. It is a one-line change in `go.mod` and a
-find-and-replace across the imports, but it does change the module's identity, so it is better done
-before anyone depends on it than after.
+toolchain then resolves it with no page to publish at all.

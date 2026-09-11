@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"code.sadeq.uk/lac/pkg/lacclient"
+	"sadeq.uk/lac/pkg/lacclient"
 )
 
 // runRun is the command LAC exists for: wait for a slot on a resource, run something, give the

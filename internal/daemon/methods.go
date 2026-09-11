@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"code.sadeq.uk/lac/internal/transport/jsonrpc"
-	"code.sadeq.uk/lac/internal/version"
+	"sadeq.uk/lac/internal/transport/jsonrpc"
+	"sadeq.uk/lac/internal/version"
 )
 
 // InfoResult describes the running daemon. A client calls daemon.info before anything else, to

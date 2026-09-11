@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // A derived name must be one the daemon will accept, whatever the directory is called — otherwise

@@ -11,9 +11,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"code.sadeq.uk/lac/internal/config"
-	"code.sadeq.uk/lac/internal/daemon"
-	"code.sadeq.uk/lac/internal/version"
+	"sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/daemon"
+	"sadeq.uk/lac/internal/version"
 )
 
 func main() {

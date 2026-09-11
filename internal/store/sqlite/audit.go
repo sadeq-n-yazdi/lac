@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 type auditLog struct{ queries querier }

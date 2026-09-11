@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/config"
-	"code.sadeq.uk/lac/internal/daemon"
-	"code.sadeq.uk/lac/pkg/lacclient"
+	"sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/daemon"
+	"sadeq.uk/lac/pkg/lacclient"
 )
 
 // live is a running daemon with clients connected to it, exactly as an operator would have.

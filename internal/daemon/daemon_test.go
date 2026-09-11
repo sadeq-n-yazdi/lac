@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/config"
-	"code.sadeq.uk/lac/internal/daemon"
+	"sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/daemon"
 )
 
 // start brings up a real daemon on a temporary socket and database, and returns it with a client

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"code.sadeq.uk/lac/pkg/lacclient"
+	"sadeq.uk/lac/pkg/lacclient"
 )
 
 // credentialFileMode keeps a saved token readable only by its owner.

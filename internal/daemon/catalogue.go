@@ -4,8 +4,8 @@ import (
 	"sort"
 	"time"
 
-	"code.sadeq.uk/lac/internal/config"
-	"code.sadeq.uk/lac/internal/service/dispatch"
+	"sadeq.uk/lac/internal/config"
+	"sadeq.uk/lac/internal/service/dispatch"
 )
 
 // catalogue exposes the operator's configured commands to the dispatch service.

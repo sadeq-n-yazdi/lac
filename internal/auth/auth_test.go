@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"code.sadeq.uk/lac/internal/auth"
-	"code.sadeq.uk/lac/internal/core"
-	"code.sadeq.uk/lac/internal/id"
-	"code.sadeq.uk/lac/internal/store/sqlite"
+	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/id"
+	"sadeq.uk/lac/internal/store/sqlite"
 )
 
 var baseTime = time.Date(2026, time.March, 1, 12, 0, 0, 0, time.UTC)

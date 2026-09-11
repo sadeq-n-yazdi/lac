@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"code.sadeq.uk/lac/internal/core"
+	"sadeq.uk/lac/internal/core"
 )
 
 // CommandConfig is a command a worker may be asked to run.
