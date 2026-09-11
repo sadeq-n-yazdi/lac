@@ -46,8 +46,10 @@ func commands() []command {
 
 func runVersion(_ context.Context, env *environment, _ []string) error {
 	if env.asJSON {
+		build := version.Current()
+
 		return writeJSON(env, map[string]string{
-			"version": version.Version, "commit": version.Commit, "build_date": version.BuildDate,
+			"version": build.Version, "commit": build.Commit, "build_date": build.BuildDate,
 		})
 	}
 

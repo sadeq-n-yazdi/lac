@@ -33,9 +33,11 @@ func (d *Daemon) registerMethods() {
 	})
 
 	d.router.Register("daemon.info", func(context.Context, *jsonrpc.Session, json.RawMessage) (any, error) {
+		build := version.Current()
+
 		return InfoResult{
-			Version:       version.Version,
-			Commit:        version.Commit,
+			Version:       build.Version,
+			Commit:        build.Commit,
 			Protocol:      jsonrpc.Version,
 			StartedAt:     d.startedAt.Format(time.RFC3339),
 			UptimeSeconds: int64(time.Since(d.startedAt).Seconds()),

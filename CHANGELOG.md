@@ -7,6 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `lac info`, `lac version --json` and the MCP server's identity reported an installed binary's
+  version as `dev`. Only the human-readable `lac version` line had been taught to fall back to the
+  build information the toolchain embeds; the other three still read the linker stamp, which a
+  `go install` build does not have.
+
 ## [0.1.1] - 2026-09-11
 
 ### Added
