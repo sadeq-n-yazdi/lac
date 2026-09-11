@@ -7,12 +7,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- One daemon per state directory. A second `lacd` against the same database and socket refuses to
+  start, naming the process that holds it. The claim is an advisory lock the kernel drops with the
+  process, so a crash leaves nothing to clear up.
+- Configuration reloading. `SIGHUP` re-reads the file at once; otherwise the daemon applies a change
+  once the file has settled — the same contents read three times at `restart_delay` (5s by default)
+  apart, so about fifteen seconds after the last edit. Resources, capabilities, operators and worker
+  commands apply live; settings that cannot change at run time are reported rather than ignored, and
+  a configuration that does not parse leaves the running one alone.
+
 ### Fixed
 
 - A binary installed with `go install sadeq.uk/lac/cmd/lac@<version>` reported its version as
   `dev`, because only `make build` stamps one in. The details now fall back to the build
   information the toolchain embeds, so an installed binary names the version it came from.
 - `lac version` printed `-dirty` twice on a build from a modified tree.
+- A command run under `lac run` reported two alarming errors if the daemon stopped mid-run. It now
+  says once, plainly, that the slot is reclaimed automatically.
 
 ## [0.1.0] - 2026-09-11
 

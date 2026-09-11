@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -106,7 +107,13 @@ func deregister(client *lacclient.Client) {
 	defer cancel()
 
 	if _, err := client.Deregister(ctx); err != nil {
-		// Not worth failing the command over: the daemon reaps a silent agent anyway.
+		// A daemon that has gone away has nothing to deregister from, and saying so on the way out
+		// of every command would be noise. Anything else is worth a word: the daemon reaps a silent
+		// agent eventually, but the operator should know it did not go quietly.
+		if errors.Is(err, lacclient.ErrNotConnected) {
+			return
+		}
+
 		fmt.Fprintf(os.Stderr, "lac: could not deregister: %v\n", err)
 	}
 }

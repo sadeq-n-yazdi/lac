@@ -7,6 +7,7 @@ import (
 
 	"sadeq.uk/lac/internal/api"
 	"sadeq.uk/lac/internal/auth"
+	"sadeq.uk/lac/internal/core"
 	"sadeq.uk/lac/internal/service/dispatch"
 	"sadeq.uk/lac/internal/service/leasing"
 	"sadeq.uk/lac/internal/service/messaging"
@@ -22,7 +23,9 @@ const housekeepingInterval = 10 * time.Second
 
 // attachServices builds the registry, messaging and leasing services and registers their methods.
 func (d *Daemon) attachServices(ctx context.Context) error {
-	secret, err := auth.LoadOrCreateSecret(d.configuration.SecretPath)
+	settings := d.settings()
+
+	secret, err := auth.LoadOrCreateSecret(settings.SecretPath)
 	if err != nil {
 		return err
 	}
@@ -32,20 +35,22 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 		return err
 	}
 
-	workdirRoots, err := d.configuration.WorkdirRoots()
+	workdirRoots, err := settings.WorkdirRoots()
 	if err != nil {
 		return err
 	}
 
 	d.registry = registry.New(d.store, authenticator, registry.Options{
-		TimeToLive:      time.Duration(d.configuration.AgentTimeToLive),
-		WorkdirRoots:    workdirRoots,
-		CapabilitiesFor: d.configuration.CapabilitiesFor,
+		TimeToLive:   time.Duration(settings.AgentTimeToLive),
+		WorkdirRoots: workdirRoots,
+		// Read through settings() rather than capturing the policy, so a reloaded capability or
+		// operator list applies to the next agent that registers.
+		CapabilitiesFor: func(name string) core.Capabilities { return d.settings().CapabilitiesFor(name) },
 		Logger:          d.logger,
 	})
 
 	d.leasing = leasing.New(d.store, leasing.Options{
-		DefaultTimeToLive: time.Duration(d.configuration.DefaultLeaseTimeToLive),
+		DefaultTimeToLive: time.Duration(settings.DefaultLeaseTimeToLive),
 		Logger:            d.logger,
 	})
 
@@ -60,7 +65,8 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 
 	d.reporting = reporting.New(d.store, d.registry, d.messaging, reporting.Options{Logger: d.logger})
 
-	d.dispatch = dispatch.New(d.store, catalogue{configuration: d.configuration}, dispatch.Options{
+	// The catalogue reads through settings() too, so a reloaded command list is live.
+	d.dispatch = dispatch.New(d.store, catalogue{daemon: d}, dispatch.Options{
 		WorkdirRoots: workdirRoots,
 		Logger:       d.logger,
 	})
@@ -81,11 +87,12 @@ func (d *Daemon) attachServices(ctx context.Context) error {
 // start-up failure rather than a silent absence: an operator who asked for it should be told why
 // they are not getting it.
 func (d *Daemon) attachTelegram() error {
-	if !d.configuration.Telegram.Enabled {
+	settings := d.settings()
+	if !settings.Telegram.Enabled {
 		return nil
 	}
 
-	token, err := d.configuration.Telegram.ResolveToken()
+	token, err := settings.Telegram.ResolveToken()
 	if err != nil {
 		return err
 	}
@@ -98,9 +105,9 @@ func (d *Daemon) attachTelegram() error {
 		Audit:     d.store.Audit(),
 	}, telegram.Options{
 		Token:          token,
-		AllowedChatIDs: d.configuration.Telegram.AllowedChatIDs,
-		PollTimeout:    time.Duration(d.configuration.Telegram.PollTimeout),
-		ReportDeadline: time.Duration(d.configuration.Telegram.ReportDeadline),
+		AllowedChatIDs: settings.Telegram.AllowedChatIDs,
+		PollTimeout:    time.Duration(settings.Telegram.PollTimeout),
+		ReportDeadline: time.Duration(settings.Telegram.ReportDeadline),
 		Logger:         d.logger,
 	})
 	if err != nil {

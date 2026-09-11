@@ -11,9 +11,10 @@ import (
 // catalogue exposes the operator's configured commands to the dispatch service.
 //
 // It reads the configuration and nothing else, which is the point: a requester names a key, and
-// only this file's contents decide what that key runs.
+// only the operator's file decides what that key runs. It reads it live, so a reloaded command
+// list takes effect without a restart.
 type catalogue struct {
-	configuration config.Config
+	daemon *Daemon
 }
 
 // compile-time proof that the contract is satisfied.
@@ -21,7 +22,7 @@ var _ dispatch.Catalogue = catalogue{}
 
 // Command returns one command by the key an agent asked for.
 func (c catalogue) Command(key string) (dispatch.Command, error) {
-	declared, err := c.configuration.Command(key)
+	declared, err := c.daemon.settings().Command(key)
 	if err != nil {
 		return dispatch.Command{}, err
 	}
@@ -31,7 +32,7 @@ func (c catalogue) Command(key string) (dispatch.Command, error) {
 
 // Commands returns every configured command, by key.
 func (c catalogue) Commands() []dispatch.Command {
-	declared := c.configuration.Commands()
+	declared := c.daemon.settings().Commands()
 
 	keys := make([]string, 0, len(declared))
 	for key := range declared {

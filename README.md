@@ -123,6 +123,28 @@ lac skill install               # teach the model when to use it
 
 See [docs/mcp.md](docs/mcp.md) for Codex, for other clients, and for what the model gets.
 
+## Running it
+
+One daemon runs per state directory. A second `lacd` against the same database and socket refuses
+to start and says who holds it — two of them would each serve half the agents and disagree about
+who holds what. Run a throwaway instance with `--database` and `--socket` pointing elsewhere.
+
+The configuration is re-read without a restart:
+
+```sh
+kill -HUP $(pgrep lacd)        # reload now
+```
+
+or simply edit the file and wait. The daemon applies a change once the file has stopped changing —
+the same contents read three times at `restart_delay` apart, so about 15 seconds after your last
+save. That way an editor writing in several steps never has half a configuration read out from
+under it. Resources, capabilities, operators and worker commands all apply live; the socket, the
+database and the Telegram bridge need a restart, and the daemon says so rather than pretending.
+
+Stopping is graceful: `SIGINT` or `SIGTERM` stops accepting, lets calls that are in flight finish,
+removes the socket and releases the lock, so the next daemon starts immediately. A command already
+running under `lac run` is left to finish — its slot is reclaimed automatically.
+
 ## Files and paths
 
 LAC follows the XDG base directory spec:
@@ -132,6 +154,7 @@ LAC follows the XDG base directory spec:
 | Config  | `$XDG_CONFIG_HOME/lac/config.yaml` (default `~/.config/lac/config.yaml`) |
 | Data    | `$XDG_STATE_HOME/lac/lac.db` (default `~/.local/state/lac/lac.db`)      |
 | Socket  | `$XDG_RUNTIME_DIR/lac/lacd.sock`, falling back to the state directory   |
+| Lock    | `lacd.lock` beside the database — one daemon per state directory        |
 
 ## Security
 

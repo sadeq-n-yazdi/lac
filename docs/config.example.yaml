@@ -29,6 +29,11 @@
 # How long in-flight calls have to finish when the daemon stops. Default: 5s
 # shutdown_grace: 5s
 
+# How often this file is examined, and the unit of quiet the daemon waits for before applying a
+# change: a change is reloaded once the file has read the same three times running — three restart
+# delays after the last edit. `kill -HUP` reloads it at once instead. Default: 5s
+# restart_delay: 5s
+
 # One of debug, info, warn, error. Default: info
 log_level: info
 

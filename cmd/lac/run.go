@@ -76,7 +76,14 @@ func runRun(ctx context.Context, env *environment, arguments []string) error {
 		release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 
-		if err := client.Release(release, lease.ID); err != nil {
+		switch err := client.Release(release, lease.ID); {
+		case errors.Is(err, lacclient.ErrNotConnected):
+			// The daemon stopped while the command was running. The slot is not lost: the daemon
+			// reclaims what a departed agent held when it comes back.
+			fmt.Fprintf(os.Stderr,
+				"lac: the daemon stopped before the slot on %s could be released; "+
+					"it is reclaimed automatically\n", *resource)
+		case err != nil:
 			fmt.Fprintf(os.Stderr, "lac: could not release the slot on %s: %v\n", *resource, err)
 		}
 	}()
