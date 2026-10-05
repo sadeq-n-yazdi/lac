@@ -252,6 +252,17 @@ func (s *Service) Active(ctx context.Context) ([]core.Agent, error) {
 
 // Deregister retires an agent and invalidates its token immediately.
 func (s *Service) Deregister(ctx context.Context, agentID string) error {
+	return s.retire(ctx, agentID, agentID, "the agent said goodbye")
+}
+
+// Evict retires another agent on an operator's say-so: its token stops working at once, so its
+// next call fails, and it drops off the roster. The caller must already have checked the actor may
+// do this, and should give back what the agent holds first.
+func (s *Service) Evict(ctx context.Context, actorID, agentID string) error {
+	return s.retire(ctx, actorID, agentID, "evicted by "+actorID)
+}
+
+func (s *Service) retire(ctx context.Context, actorID, agentID, detail string) error {
 	now := s.now()
 
 	if err := s.store.InTransaction(ctx, func(tx core.Store) error {
@@ -264,8 +275,8 @@ func (s *Service) Deregister(ctx context.Context, agentID string) error {
 		return err
 	}
 
-	s.audit(ctx, agentID, core.AuditAgentDeregistered, agentID, "the agent said goodbye")
-	s.logger.Info("agent deregistered", "id", agentID)
+	s.audit(ctx, actorID, core.AuditAgentDeregistered, agentID, detail)
+	s.logger.Info("agent deregistered", "id", agentID, "by", actorID)
 
 	return nil
 }

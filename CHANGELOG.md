@@ -7,6 +7,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Operator remedies for a stuck machine. `lac status` shows every resource with its holders and its
+  queue, and every agent with how much it holds and waits for. An operator can then take a slot
+  back (`lac release --force <lease>`), free a whole resource (`lac release --resource`), give back
+  everything one agent has (`lac release --agent`), withdraw one waiting request or a resource's
+  whole queue (`lac cancel --force <entry>`, `lac cancel --resource`), and evict an agent, which also
+  revokes its token (`lac evict`). Ordinary agents are refused, and every action is audited under
+  the operator's name. Previously the only way out was to wait for the lease to expire.
+- `lac queue` lists who holds the resource — lease id, agent, since, expiry and reason — and the
+  entry id of each waiting request.
+- `lac completion <bash|zsh|fish>` prints a completion script, and `--install` writes it where the
+  shell loads it. Resource names, agents, held leases and queue entries are completed live.
+
 ## [0.3.0] - 2026-09-11
 
 ### Added

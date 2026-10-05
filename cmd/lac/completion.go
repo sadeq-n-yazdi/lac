@@ -32,6 +32,7 @@ const (
 	sourceResources
 	sourceAgents
 	sourceLeases
+	sourceQueueEntries
 )
 
 // completionValues describes what may be typed into one argument or flag value.
@@ -85,10 +86,19 @@ var globalCompletionFlags = []completionFlag{
 // completionSpecs mirror the flag sets each command parses. A command missing from here is caught
 // by a test, so a new command cannot quietly go without completion.
 var completionSpecs = map[string]completionSpec{
-	"version":    {},
-	"info":       {},
-	"register":   {flags: []completionFlag{booleanFlag("save", "save the token for later commands")}},
-	"agents":     {},
+	"version":  {},
+	"info":     {},
+	"register": {flags: []completionFlag{booleanFlag("save", "save the token for later commands")}},
+	"agents":   {flags: []completionFlag{booleanFlag("all", "include stale and deregistered agents")}},
+	"status":   {},
+	"evict":    {positional: []completionValues{fromSource(sourceAgents)}},
+	"cancel": {
+		flags: []completionFlag{
+			booleanFlag("force", "withdraw another agent's request"),
+			sourcedFlag("resource", "withdraw every request waiting for this resource", sourceResources),
+		},
+		positional: []completionValues{fromSource(sourceQueueEntries)},
+	},
 	"resources":  {},
 	"reload":     {},
 	"held":       {},
@@ -129,7 +139,11 @@ var completionSpecs = map[string]completionSpec{
 		positional: []completionValues{fromSource(sourceResources)},
 	},
 	"release": {
-		flags:      []completionFlag{booleanFlag("force", "take the slot back from whichever agent holds it")},
+		flags: []completionFlag{
+			booleanFlag("force", "take the slot back from whichever agent holds it"),
+			sourcedFlag("agent", "give back every slot this agent holds", sourceAgents),
+			sourcedFlag("resource", "take back every slot held on this resource", sourceResources),
+		},
 		positional: []completionValues{fromSource(sourceLeases)},
 	},
 	"run": {flags: []completionFlag{
@@ -351,23 +365,33 @@ func (d *daemonLookup) lookup(ctx context.Context, source valueSource) []candida
 			found = append(found, candidate{value: agent.Name, description: agent.Workdir})
 		}
 
-	case sourceLeases:
+	case sourceLeases, sourceQueueEntries:
 		resources, err := client.Resources(ctx)
 		if err != nil {
 			return nil
 		}
 		for _, resource := range resources {
-			if resource.Held == 0 {
+			// Skipping the quiet resources saves a round trip each on every Tab.
+			if (source == sourceLeases && resource.Held == 0) || (source == sourceQueueEntries && resource.Waiting == 0) {
 				continue
 			}
 			status, err := client.Queue(ctx, resource.Name)
 			if err != nil {
 				continue
 			}
-			for _, holder := range status.Holders {
+			if source == sourceLeases {
+				for _, holder := range status.Holders {
+					found = append(found, candidate{
+						value:       holder.ID,
+						description: fmt.Sprintf("%s held by %s", holder.Resource, holder.AgentName),
+					})
+				}
+				continue
+			}
+			for _, entry := range status.Waiting {
 				found = append(found, candidate{
-					value:       holder.ID,
-					description: fmt.Sprintf("%s held by %s", holder.Resource, holder.AgentName),
+					value:       entry.ID,
+					description: fmt.Sprintf("%s: %s waiting at %d", entry.Resource, entry.AgentName, entry.Position),
 				})
 			}
 		}

@@ -42,6 +42,11 @@ func commands() []command {
 		{name: "report", summary: "ask every agent what it is doing", personal: true, run: runReport},
 		{name: "answer", summary: "answer a report request", run: runAnswer},
 		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},
+		{name: "status", summary: "every resource and agent: who holds, who waits (the operator's overview)", personal: true,
+			run: runStatus},
+		{name: "cancel", summary: "withdraw a queued request, or every request for a resource (operators)", run: runCancel},
+		{name: "evict", summary: "release everything an agent holds and revoke it (operators only)", personal: true,
+			run: runEvict},
 		{name: "completion", summary: "print or install shell completion for bash, zsh or fish", run: runCompletion},
 		{name: completeCommandName, summary: "complete a command line, for the shell scripts", personal: true,
 			hidden: true, run: runComplete},
@@ -570,10 +575,10 @@ func runQueue(ctx context.Context, env *environment, arguments []string) error {
 	}
 
 	if len(status.Waiting) > 0 {
-		fmt.Fprintln(env.output, "\nPOSITION\tAGENT\tPRIORITY\tSINCE\tREASON")
+		fmt.Fprintln(env.output, "\nPOSITION\tENTRY\tAGENT\tPRIORITY\tSINCE\tREASON")
 		for _, entry := range status.Waiting {
-			fmt.Fprintf(env.output, "%d\t%s\t%d\t%s\t%s\n",
-				entry.Position, entry.AgentName, entry.Priority, shortTime(entry.RequestedAt), entry.Reason)
+			fmt.Fprintf(env.output, "%d\t%s\t%s\t%d\t%s\t%s\n",
+				entry.Position, entry.ID, entry.AgentName, entry.Priority, shortTime(entry.RequestedAt), entry.Reason)
 		}
 	}
 
@@ -621,18 +626,29 @@ func runAcquire(ctx context.Context, env *environment, arguments []string) error
 
 func runRelease(ctx context.Context, env *environment, arguments []string) error {
 	flags := flag.NewFlagSet("release", flag.ContinueOnError)
-	force := flags.Bool("force", false, "take the slot back from whichever agent holds it (operators only)")
+	var (
+		force    = flags.Bool("force", false, "take the slot back from whichever agent holds it (operators only)")
+		agent    = flags.String("agent", "", "give back every slot this agent holds and its queue places (operators only)")
+		resource = flags.String("resource", "", "take back every slot held on this resource (operators only)")
+	)
 	if err := parseAnywhere(flags, arguments); err != nil {
 		return err
 	}
-	if flags.NArg() < 1 {
-		return errors.New("usage: lac release [--force] <lease-id>")
+
+	targets := 0
+	for _, given := range []bool{flags.NArg() > 0, *agent != "", *resource != ""} {
+		if given {
+			targets++
+		}
 	}
-	leaseID := flags.Arg(0)
+	if targets != 1 {
+		return errors.New("usage: lac release [--force] <lease-id>, lac release --agent <name> " +
+			"or lac release --resource <name>")
+	}
 
 	// Taking another agent's slot is an operator power, granted against the operator's own name,
 	// so a forced release registers under that name rather than the directory's.
-	if *force {
+	if *force || *agent != "" || *resource != "" {
 		env.identity.personal = true
 	}
 
@@ -641,6 +657,25 @@ func runRelease(ctx context.Context, env *environment, arguments []string) error
 		return err
 	}
 	defer release()
+
+	if *agent != "" || *resource != "" {
+		var released int
+		if *agent != "" {
+			released, err = client.ReleaseAgent(ctx, *agent)
+		} else {
+			released, err = client.FreeResource(ctx, *resource)
+		}
+		if err != nil {
+			return err
+		}
+		if env.asJSON {
+			return writeJSON(env, map[string]any{"released": released})
+		}
+		fmt.Fprintf(env.output, "released\t%d slot(s)\n", released)
+
+		return nil
+	}
+	leaseID := flags.Arg(0)
 
 	releaseLease := client.Release
 	if *force {

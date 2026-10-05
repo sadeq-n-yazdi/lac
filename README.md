@@ -99,7 +99,8 @@ lacd &                                   # start the daemon
 lac resources                            # what this machine shares, from your config
 lac run --resource test -- make test     # queue for a slot, run, release
 lac agents                               # who is working right now
-lac queue test                           # who is waiting, and for what
+lac queue test                           # who holds it, who is waiting, and for what
+lac status                               # every resource and agent on one screen
 lac send claude-b question 'are you touching the parser?'
 lac inbox --ack                          # read what was sent to you
 lac log --follow                         # watch what the agents say to each other (operators)
@@ -122,6 +123,26 @@ to `~/.config/lac/config.yaml` and edit it. An operator can also define one on t
 ```sh
 lac --name operator define --capacity 4 --description "concurrent test runs" test
 ```
+
+When the machine gets stuck — an agent alive but holding on, a queue nobody will come back for —
+an operator can take things back. Each of these is refused for an ordinary agent and recorded in the
+audit log under the operator's name:
+
+```sh
+lac status                               # find the lease, entry or agent that is stuck
+lac release --force <lease-id>           # take one slot back from whoever holds it
+lac release --resource test              # take back every slot held on a resource
+lac release --agent claude-a             # every slot and queue place an agent has
+lac cancel --force <entry-id>            # withdraw one waiting request
+lac cancel --resource test               # withdraw every request waiting for a resource
+lac evict claude-a                       # all of the above, and revoke the agent's token
+```
+
+Evicting an agent ends its standing with the daemon, not its process: whatever it was running keeps
+running, and its next call to the daemon is refused.
+
+Tab completion for bash, zsh and fish comes from `lac completion <shell>`; add `--install` to write
+it where the shell loads it.
 
 ## Using it from an AI tool
 

@@ -107,6 +107,11 @@ func (a *API) Register(router *jsonrpc.Router) {
 	router.Register("queue.status", a.authenticated(a.handleQueueStatus))
 	router.Register("queue.cancel", a.authenticated(a.handleQueueCancel))
 
+	router.Register("admin.release_agent", a.authenticated(a.handleReleaseAgent))
+	router.Register("admin.free_resource", a.authenticated(a.handleFreeResource))
+	router.Register("admin.clear_queue", a.authenticated(a.handleClearQueue))
+	router.Register("admin.evict", a.authenticated(a.handleEvict))
+
 	router.Register("task.commands", a.authenticated(a.handleTaskCommands))
 	router.Register("task.submit", a.authenticated(a.handleTaskSubmit))
 	router.Register("task.wait", a.authenticated(a.handleTaskWait))

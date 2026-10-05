@@ -498,7 +498,7 @@ func TestReleaseEverythingHeldBy(t *testing.T) {
 	subject.acquire(t, crashed, "test")
 	subject.acquire(t, crashed, "reviewer")
 
-	released, err := subject.service.ReleaseEverythingHeldBy(t.Context(), crashed.ID, "went stale")
+	released, err := subject.service.ReleaseEverythingHeldBy(t.Context(), core.SystemActor, crashed.ID, "went stale")
 	if err != nil {
 		t.Fatalf("ReleaseEverythingHeldBy() = %v, want nil", err)
 	}

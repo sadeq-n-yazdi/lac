@@ -312,6 +312,8 @@ func (a *API) handleQueueStatus(
 // QueueCancelParams withdraws a request from a queue.
 type QueueCancelParams struct {
 	EntryID string `json:"entry_id"`
+	// Force withdraws another agent's request, which only an operator may do.
+	Force bool `json:"force,omitempty"`
 }
 
 // QueueCancelResult confirms the withdrawal.
@@ -325,6 +327,17 @@ func (a *API) handleQueueCancel(
 	var arguments QueueCancelParams
 	if err := jsonrpc.ParseParams(params, &arguments); err != nil {
 		return nil, err
+	}
+
+	if arguments.Force {
+		if err := a.authenticator.Authorise(ctx, caller, auth.PermissionForceRelease, ""); err != nil {
+			return nil, err
+		}
+		if err := a.leasing.ForceCancel(ctx, caller.ID, arguments.EntryID); err != nil {
+			return nil, err
+		}
+
+		return QueueCancelResult{Cancelled: true}, nil
 	}
 
 	if err := a.leasing.Cancel(ctx, caller.ID, arguments.EntryID); err != nil {

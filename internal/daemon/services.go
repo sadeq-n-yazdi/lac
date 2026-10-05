@@ -162,7 +162,7 @@ func (d *Daemon) runHousekeeping(ctx context.Context) {
 	}
 
 	for _, agent := range stale {
-		released, err := d.leasing.ReleaseEverythingHeldBy(ctx, agent.ID, "the agent went stale")
+		released, err := d.leasing.ReleaseEverythingHeldBy(ctx, core.SystemActor, agent.ID, "the agent went stale")
 		if err != nil {
 			d.logger.Error("could not reclaim what a stale agent held",
 				"agent", agent.Name, "error", err)

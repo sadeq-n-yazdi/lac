@@ -148,7 +148,7 @@ func (a *API) handleDeregister(
 ) (any, error) {
 	// Give the slots back before retiring the agent, so nothing is stranded if the second step
 	// fails.
-	released, err := a.leasing.ReleaseEverythingHeldBy(ctx, caller.ID, "the agent deregistered")
+	released, err := a.leasing.ReleaseEverythingHeldBy(ctx, caller.ID, caller.ID, "the agent deregistered")
 	if err != nil {
 		return nil, err
 	}

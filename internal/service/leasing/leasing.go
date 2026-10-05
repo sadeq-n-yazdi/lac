@@ -450,6 +450,16 @@ func (s *Service) release(ctx context.Context, agentID, leaseID string, force bo
 
 // Cancel takes an agent out of a queue it is waiting in.
 func (s *Service) Cancel(ctx context.Context, agentID, entryID string) error {
+	return s.cancel(ctx, agentID, entryID, false)
+}
+
+// ForceCancel takes any agent out of a queue. The waiting agent's acquire fails, the same as if it
+// had given up itself; the caller must already have checked that the actor may do this.
+func (s *Service) ForceCancel(ctx context.Context, actorID, entryID string) error {
+	return s.cancel(ctx, actorID, entryID, true)
+}
+
+func (s *Service) cancel(ctx context.Context, agentID, entryID string, force bool) error {
 	var resourceName string
 
 	err := s.store.InTransaction(ctx, func(tx core.Store) error {
@@ -457,8 +467,13 @@ func (s *Service) Cancel(ctx context.Context, agentID, entryID string) error {
 		if err != nil {
 			return err
 		}
-		if entry.AgentID != agentID {
+		if !force && entry.AgentID != agentID {
 			return fmt.Errorf("%w: queue entry %s belongs to another agent", core.ErrUnauthorised, entryID)
+		}
+		// An operator asking to cancel a request that was already served or withdrawn should be told,
+		// rather than seeing "cancelled" for something that did not happen.
+		if force && entry.State != core.QueueWaiting {
+			return fmt.Errorf("%w: queue entry %s is no longer waiting (%s)", core.ErrConflict, entryID, entry.State)
 		}
 
 		resourceName = entry.ResourceName
@@ -468,9 +483,14 @@ func (s *Service) Cancel(ctx context.Context, agentID, entryID string) error {
 			return err
 		}
 
+		detail := "entry " + entryID
+		if entry.AgentID != agentID {
+			detail = fmt.Sprintf("entry %s force-cancelled for %s", entryID, entry.AgentID)
+		}
+
 		return tx.Audit().Append(ctx, core.AuditEntry{
 			Actor: agentID, Action: core.AuditQueueCancelled, Target: entry.ResourceName,
-			Detail: "entry " + entryID, At: now,
+			Detail: detail, At: now,
 		})
 	})
 	if err != nil {
@@ -485,8 +505,9 @@ func (s *Service) Cancel(ctx context.Context, agentID, entryID string) error {
 
 // ReleaseEverythingHeldBy gives back every slot an agent holds and takes it out of every queue.
 // The registry calls this when an agent goes stale: a crashed agent must not keep the machine's
-// scarce things to itself.
-func (s *Service) ReleaseEverythingHeldBy(ctx context.Context, agentID, reason string) (int, error) {
+// scarce things to itself. An operator calls it for an agent that is alive but stuck. The actor is
+// whoever asked, and is what the audit log records.
+func (s *Service) ReleaseEverythingHeldBy(ctx context.Context, actor, agentID, reason string) (int, error) {
 	now := s.now()
 	released := 0
 
@@ -501,7 +522,7 @@ func (s *Service) ReleaseEverythingHeldBy(ctx context.Context, agentID, reason s
 				return err
 			}
 			if err := tx.Audit().Append(ctx, core.AuditEntry{
-				Actor: core.SystemActor, Action: core.AuditLeaseReleased, Target: lease.ResourceName,
+				Actor: actor, Action: core.AuditLeaseReleased, Target: lease.ResourceName,
 				Detail: fmt.Sprintf("lease %s reclaimed: %s", lease.ID, reason), At: now,
 			}); err != nil {
 				return err
@@ -531,6 +552,87 @@ func (s *Service) ReleaseEverythingHeldBy(ctx context.Context, agentID, reason s
 	s.waiters.signalAll()
 
 	return released, nil
+}
+
+// FreeResource takes back every slot held on a resource, so whoever is next in line gets one. It
+// is the operator's way to unblock a resource; the caller must already have checked the actor may.
+func (s *Service) FreeResource(ctx context.Context, actorID, resourceName string) (int, error) {
+	now := s.now()
+	released := 0
+
+	err := s.store.InTransaction(ctx, func(tx core.Store) error {
+		if _, err := tx.Resources().ByName(ctx, resourceName); err != nil {
+			return err
+		}
+
+		leases, err := tx.Leases().ActiveLeases(ctx, resourceName, now)
+		if err != nil {
+			return err
+		}
+
+		for _, lease := range leases {
+			if err := tx.Leases().Release(ctx, lease.ID, now); err != nil {
+				return err
+			}
+			if err := tx.Audit().Append(ctx, core.AuditEntry{
+				Actor: actorID, Action: core.AuditLeaseReleased, Target: resourceName,
+				Detail: fmt.Sprintf("lease %s force-released from %s", lease.ID, lease.AgentID), At: now,
+			}); err != nil {
+				return err
+			}
+			released++
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	s.waiters.signal(resourceName)
+
+	return released, nil
+}
+
+// ClearQueue takes every waiting agent out of a resource's queue. Each one's acquire fails, the
+// same as if it had given up; the caller must already have checked the actor may do this.
+func (s *Service) ClearQueue(ctx context.Context, actorID, resourceName string) (int, error) {
+	now := s.now()
+	cancelled := 0
+
+	err := s.store.InTransaction(ctx, func(tx core.Store) error {
+		if _, err := tx.Resources().ByName(ctx, resourceName); err != nil {
+			return err
+		}
+
+		entries, err := tx.Leases().Waiting(ctx, resourceName)
+		if err != nil {
+			return err
+		}
+
+		for _, entry := range entries {
+			if err := tx.Leases().ResolveQueueEntry(ctx, entry.ID, core.QueueCancelled, now); err != nil {
+				return err
+			}
+			if err := tx.Audit().Append(ctx, core.AuditEntry{
+				Actor: actorID, Action: core.AuditQueueCancelled, Target: resourceName,
+				Detail: fmt.Sprintf("entry %s force-cancelled for %s", entry.ID, entry.AgentID), At: now,
+			}); err != nil {
+				return err
+			}
+			cancelled++
+		}
+
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	// Every waiter on the resource wakes, and each learns its request is gone.
+	s.waiters.signal(resourceName)
+
+	return cancelled, nil
 }
 
 // ReapExpired reclaims slots whose holders went away without releasing them, and reports how many.
