@@ -42,6 +42,9 @@ func commands() []command {
 		{name: "report", summary: "ask every agent what it is doing", personal: true, run: runReport},
 		{name: "answer", summary: "answer a report request", run: runAnswer},
 		{name: "deregister", summary: "retire this agent and give back its slots", run: runDeregister},
+		{name: "completion", summary: "print or install shell completion for bash, zsh or fish", run: runCompletion},
+		{name: completeCommandName, summary: "complete a command line, for the shell scripts", personal: true,
+			hidden: true, run: runComplete},
 	}
 }
 

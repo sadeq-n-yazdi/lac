@@ -48,6 +48,9 @@ type command struct {
 	// `lac queue test` is far more useful when it says which project is waiting than when it says
 	// the same username three times.
 	personal bool
+	// hidden keeps a command out of the usage text and out of completion: it exists for scripts,
+	// not for people.
+	hidden bool
 	// run receives the arguments after the subcommand name.
 	run func(ctx context.Context, env *environment, arguments []string) error
 }
@@ -131,6 +134,9 @@ Commands:
 
 	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 2, ' ', 0)
 	for _, candidate := range available {
+		if candidate.hidden {
+			continue
+		}
 		fmt.Fprintf(writer, "  %s\t%s\n", candidate.name, candidate.summary)
 	}
 	_ = writer.Flush()
