@@ -149,6 +149,36 @@ func (s *Service) Queue(ctx context.Context, resourceName string) ([]core.QueueE
 	return entries, nil
 }
 
+// Holding is a slot held on a resource and the reason its holder gave when it queued for it.
+type Holding struct {
+	Lease  core.Lease
+	Reason string
+}
+
+// Holders returns who holds a resource right now. It is how an operator finds the lease to take
+// back when a holder is not giving it up.
+func (s *Service) Holders(ctx context.Context, resourceName string) ([]Holding, error) {
+	leases, err := s.store.Leases().ActiveLeases(ctx, resourceName, s.now())
+	if err != nil {
+		return nil, err
+	}
+
+	holdings := make([]Holding, 0, len(leases))
+	for _, lease := range leases {
+		holding := Holding{Lease: lease}
+		entry, err := s.store.Leases().QueueEntryByID(ctx, lease.QueueEntryID)
+		switch {
+		case err == nil:
+			holding.Reason = entry.Reason
+		case !errors.Is(err, core.ErrNotFound):
+			return nil, err
+		}
+		holdings = append(holdings, holding)
+	}
+
+	return holdings, nil
+}
+
 // Held returns the slots an agent currently holds.
 func (s *Service) Held(ctx context.Context, agentID string) ([]core.Lease, error) {
 	leases, err := s.store.Leases().ActiveLeasesByAgent(ctx, agentID, s.now())
@@ -369,6 +399,17 @@ func (s *Service) Renew(ctx context.Context, agentID, leaseID string) (core.Leas
 // Release gives a slot back. Releasing a slot that was already released is not an error: a client
 // that retries after a dropped connection should not have to reason about it.
 func (s *Service) Release(ctx context.Context, agentID, leaseID string) error {
+	return s.release(ctx, agentID, leaseID, false)
+}
+
+// ForceRelease takes a slot back from whoever holds it. It is the operator's remedy for a holder
+// that is still alive but is not giving the slot back; the caller must already have checked that
+// the actor is allowed to do this. The holder's own later release finds nothing left to do.
+func (s *Service) ForceRelease(ctx context.Context, actorID, leaseID string) error {
+	return s.release(ctx, actorID, leaseID, true)
+}
+
+func (s *Service) release(ctx context.Context, agentID, leaseID string, force bool) error {
 	var resourceName string
 
 	err := s.store.InTransaction(ctx, func(tx core.Store) error {
@@ -376,7 +417,7 @@ func (s *Service) Release(ctx context.Context, agentID, leaseID string) error {
 		if err != nil {
 			return err
 		}
-		if lease.AgentID != agentID {
+		if !force && lease.AgentID != agentID {
 			return notYours(leaseID)
 		}
 
@@ -387,9 +428,14 @@ func (s *Service) Release(ctx context.Context, agentID, leaseID string) error {
 			return err
 		}
 
+		detail := "lease " + leaseID
+		if lease.AgentID != agentID {
+			detail = fmt.Sprintf("lease %s force-released from %s", leaseID, lease.AgentID)
+		}
+
 		return tx.Audit().Append(ctx, core.AuditEntry{
 			Actor: agentID, Action: core.AuditLeaseReleased, Target: lease.ResourceName,
-			Detail: "lease " + leaseID, At: now,
+			Detail: detail, At: now,
 		})
 	})
 	if err != nil {

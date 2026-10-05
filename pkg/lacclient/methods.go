@@ -384,6 +384,11 @@ func (c *Client) Release(ctx context.Context, leaseID string) error {
 	return c.Call(ctx, "lease.release", map[string]any{"lease_id": leaseID}, nil)
 }
 
+// ForceRelease takes a slot back from whichever agent holds it. Only an operator may do this.
+func (c *Client) ForceRelease(ctx context.Context, leaseID string) error {
+	return c.Call(ctx, "lease.release", map[string]any{"lease_id": leaseID, "force": true}, nil)
+}
+
 // Held returns the slots this agent currently holds.
 func (c *Client) Held(ctx context.Context) ([]Lease, error) {
 	var result struct {
@@ -407,9 +412,17 @@ type QueueEntry struct {
 	Position    int    `json:"position"`
 }
 
-// QueueStatus is a resource and who is waiting for it.
+// Holder is a slot held on a resource, with who holds it and why.
+type Holder struct {
+	Lease
+	AgentName string `json:"agent_name"`
+	Reason    string `json:"reason"`
+}
+
+// QueueStatus is a resource, who holds it, and who is waiting for it.
 type QueueStatus struct {
 	Resource Resource     `json:"resource"`
+	Holders  []Holder     `json:"holders"`
 	Waiting  []QueueEntry `json:"waiting"`
 }
 

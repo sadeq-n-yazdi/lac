@@ -188,6 +188,13 @@ func (a *API) handleRenew(
 	return LeaseResult{Lease: viewOfLease(lease)}, nil
 }
 
+// ReleaseParams names a lease to give back. Force takes it from whoever holds it, which only an
+// operator may do.
+type ReleaseParams struct {
+	LeaseID string `json:"lease_id"`
+	Force   bool   `json:"force,omitempty"`
+}
+
 // ReleaseResult confirms the slot is back.
 type ReleaseResult struct {
 	Released bool `json:"released"`
@@ -196,12 +203,22 @@ type ReleaseResult struct {
 func (a *API) handleRelease(
 	ctx context.Context, caller core.Agent, _ *jsonrpc.Session, params json.RawMessage,
 ) (any, error) {
-	var arguments LeaseParams
+	var arguments ReleaseParams
 	if err := jsonrpc.ParseParams(params, &arguments); err != nil {
 		return nil, err
 	}
 
-	if err := a.leasing.Release(ctx, caller.ID, arguments.LeaseID); err != nil {
+	if !arguments.Force {
+		if err := a.leasing.Release(ctx, caller.ID, arguments.LeaseID); err != nil {
+			return nil, err
+		}
+		return ReleaseResult{Released: true}, nil
+	}
+
+	if err := a.authenticator.Authorise(ctx, caller, auth.PermissionForceRelease, ""); err != nil {
+		return nil, err
+	}
+	if err := a.leasing.ForceRelease(ctx, caller.ID, arguments.LeaseID); err != nil {
 		return nil, err
 	}
 
@@ -229,10 +246,18 @@ func (a *API) handleHeld(
 	return HeldResult{Leases: views}, nil
 }
 
-// QueueStatusResult is who is waiting, in the order they will be served.
+// QueueStatusResult is who holds a resource and who is waiting, in the order they will be served.
 type QueueStatusResult struct {
 	Resource ResourceView     `json:"resource"`
+	Holders  []HolderView     `json:"holders"`
 	Waiting  []QueueEntryView `json:"waiting"`
+}
+
+// HolderView is a slot held on the resource, with who holds it and why.
+type HolderView struct {
+	LeaseView
+	AgentName string `json:"agent_name"`
+	Reason    string `json:"reason"`
 }
 
 func (a *API) handleQueueStatus(
@@ -267,7 +292,21 @@ func (a *API) handleQueueStatus(
 		})
 	}
 
-	return QueueStatusResult{Resource: viewOfResource(status), Waiting: waiting}, nil
+	holdings, err := a.leasing.Holders(ctx, arguments.Resource)
+	if err != nil {
+		return nil, err
+	}
+
+	holders := make([]HolderView, 0, len(holdings))
+	for _, holding := range holdings {
+		holders = append(holders, HolderView{
+			LeaseView: viewOfLease(holding.Lease),
+			AgentName: a.nameOf(ctx, holding.Lease.AgentID),
+			Reason:    holding.Reason,
+		})
+	}
+
+	return QueueStatusResult{Resource: viewOfResource(status), Holders: holders, Waiting: waiting}, nil
 }
 
 // QueueCancelParams withdraws a request from a queue.

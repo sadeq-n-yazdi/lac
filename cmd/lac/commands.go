@@ -26,7 +26,7 @@ func commands() []command {
 		{name: "resources", summary: "the shared resources on this machine", personal: true, run: runResources},
 		{name: "define", summary: "create or reconfigure a resource (operators only)", personal: true, run: runDefine},
 		{name: "reload", summary: "make the daemon re-read its configuration now", personal: true, run: runReload},
-		{name: "queue", summary: "who is waiting for a resource", personal: true, run: runQueue},
+		{name: "queue", summary: "who holds a resource and who is waiting for it", personal: true, run: runQueue},
 		{name: "acquire", summary: "take a slot and hold it until released", run: runAcquire},
 		{name: "release", summary: "give a slot back", run: runRelease},
 		{name: "held", summary: "the slots you are holding", run: runHeld},
@@ -558,6 +558,14 @@ func runQueue(ctx context.Context, env *environment, arguments []string) error {
 	fmt.Fprintf(env.output, "%s\t%d of %d slots held, %d waiting\n",
 		status.Resource.Name, status.Resource.Held, status.Resource.Capacity, status.Resource.Waiting)
 
+	if len(status.Holders) > 0 {
+		fmt.Fprintln(env.output, "\nLEASE\tHOLDER\tSINCE\tEXPIRES\tREASON")
+		for _, holder := range status.Holders {
+			fmt.Fprintf(env.output, "%s\t%s\t%s\t%s\t%s\n", holder.ID, holder.AgentName,
+				shortTime(holder.AcquiredAt), shortTime(holder.ExpiresAt), holder.Reason)
+		}
+	}
+
 	if len(status.Waiting) > 0 {
 		fmt.Fprintln(env.output, "\nPOSITION\tAGENT\tPRIORITY\tSINCE\tREASON")
 		for _, entry := range status.Waiting {
@@ -609,8 +617,20 @@ func runAcquire(ctx context.Context, env *environment, arguments []string) error
 }
 
 func runRelease(ctx context.Context, env *environment, arguments []string) error {
-	if len(arguments) < 1 {
-		return errors.New("usage: lac release <lease-id>")
+	flags := flag.NewFlagSet("release", flag.ContinueOnError)
+	force := flags.Bool("force", false, "take the slot back from whichever agent holds it (operators only)")
+	if err := parseAnywhere(flags, arguments); err != nil {
+		return err
+	}
+	if flags.NArg() < 1 {
+		return errors.New("usage: lac release [--force] <lease-id>")
+	}
+	leaseID := flags.Arg(0)
+
+	// Taking another agent's slot is an operator power, granted against the operator's own name,
+	// so a forced release registers under that name rather than the directory's.
+	if *force {
+		env.identity.personal = true
 	}
 
 	client, release, _, err := env.identity.connect(ctx, env.socketPath)
@@ -619,15 +639,19 @@ func runRelease(ctx context.Context, env *environment, arguments []string) error
 	}
 	defer release()
 
-	if err := client.Release(ctx, arguments[0]); err != nil {
+	releaseLease := client.Release
+	if *force {
+		releaseLease = client.ForceRelease
+	}
+	if err := releaseLease(ctx, leaseID); err != nil {
 		return err
 	}
 
 	if env.asJSON {
-		return writeJSON(env, map[string]any{"released": true, "lease_id": arguments[0]})
+		return writeJSON(env, map[string]any{"released": true, "lease_id": leaseID})
 	}
 
-	fmt.Fprintf(env.output, "released\t%s\n", arguments[0])
+	fmt.Fprintf(env.output, "released\t%s\n", leaseID)
 
 	return nil
 }
