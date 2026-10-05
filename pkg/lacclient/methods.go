@@ -384,6 +384,58 @@ func (c *Client) Release(ctx context.Context, leaseID string) error {
 	return c.Call(ctx, "lease.release", map[string]any{"lease_id": leaseID}, nil)
 }
 
+// ForceRelease takes a slot back from whichever agent holds it. Only an operator may do this.
+func (c *Client) ForceRelease(ctx context.Context, leaseID string) error {
+	return c.Call(ctx, "lease.release", map[string]any{"lease_id": leaseID, "force": true}, nil)
+}
+
+// ReleaseAgent gives back every slot an agent holds and takes it out of every queue, returning how
+// many slots came back. The agent is a name or an id. Only an operator may do this.
+func (c *Client) ReleaseAgent(ctx context.Context, agent string) (int, error) {
+	var result struct {
+		Released int `json:"released"`
+	}
+
+	err := c.Call(ctx, "admin.release_agent", map[string]any{"agent": agent}, &result)
+
+	return result.Released, err
+}
+
+// FreeResource takes back every slot held on a resource, returning how many. Only an operator may.
+func (c *Client) FreeResource(ctx context.Context, resource string) (int, error) {
+	var result struct {
+		Released int `json:"released"`
+	}
+
+	err := c.Call(ctx, "admin.free_resource", map[string]any{"resource": resource}, &result)
+
+	return result.Released, err
+}
+
+// ClearQueue withdraws every request waiting for a resource, returning how many. Only an operator
+// may do this.
+func (c *Client) ClearQueue(ctx context.Context, resource string) (int, error) {
+	var result struct {
+		Cancelled int `json:"cancelled"`
+	}
+
+	err := c.Call(ctx, "admin.clear_queue", map[string]any{"resource": resource}, &result)
+
+	return result.Cancelled, err
+}
+
+// Evict retires an agent: it gives back what the agent holds, revokes its token and drops it from
+// the roster, returning how many slots came back. Only an operator may do this.
+func (c *Client) Evict(ctx context.Context, agent string) (int, error) {
+	var result struct {
+		Released int `json:"released"`
+	}
+
+	err := c.Call(ctx, "admin.evict", map[string]any{"agent": agent}, &result)
+
+	return result.Released, err
+}
+
 // Held returns the slots this agent currently holds.
 func (c *Client) Held(ctx context.Context) ([]Lease, error) {
 	var result struct {
@@ -407,9 +459,17 @@ type QueueEntry struct {
 	Position    int    `json:"position"`
 }
 
-// QueueStatus is a resource and who is waiting for it.
+// Holder is a slot held on a resource, with who holds it and why.
+type Holder struct {
+	Lease
+	AgentName string `json:"agent_name"`
+	Reason    string `json:"reason"`
+}
+
+// QueueStatus is a resource, who holds it, and who is waiting for it.
 type QueueStatus struct {
 	Resource Resource     `json:"resource"`
+	Holders  []Holder     `json:"holders"`
 	Waiting  []QueueEntry `json:"waiting"`
 }
 
@@ -425,6 +485,11 @@ func (c *Client) Queue(ctx context.Context, resource string) (QueueStatus, error
 // CancelQueueEntry withdraws a request from a queue.
 func (c *Client) CancelQueueEntry(ctx context.Context, entryID string) error {
 	return c.Call(ctx, "queue.cancel", map[string]any{"entry_id": entryID}, nil)
+}
+
+// ForceCancelQueueEntry withdraws another agent's request from a queue. Only an operator may.
+func (c *Client) ForceCancelQueueEntry(ctx context.Context, entryID string) error {
+	return c.Call(ctx, "queue.cancel", map[string]any{"entry_id": entryID, "force": true}, nil)
 }
 
 // DaemonInfo describes the daemon on the other end.

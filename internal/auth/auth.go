@@ -26,6 +26,12 @@ const (
 	PermissionRequestReports Permission = "request_reports"
 	// PermissionReadLog is reading the traffic between other agents. An operator power.
 	PermissionReadLog Permission = "read_the_message_log"
+	// PermissionForceRelease is taking a slot back from another agent. An operator power, granted
+	// with the right to define resources: both are decisions about the machine's limits.
+	PermissionForceRelease Permission = "force_release"
+	// PermissionEvict is retiring another agent and revoking its token. An operator power, granted
+	// with the right to define resources.
+	PermissionEvict Permission = "evict"
 )
 
 // Clock returns the current time. Tests replace it; production leaves it alone.
@@ -171,7 +177,7 @@ func (a *Authenticator) permitted(agent core.Agent, permission Permission, targe
 		return agent.Capabilities.MayLease(target)
 	case PermissionBroadcast:
 		return agent.Capabilities.CanBroadcast
-	case PermissionDefineResource:
+	case PermissionDefineResource, PermissionForceRelease, PermissionEvict:
 		return agent.Capabilities.CanDefineResources
 	case PermissionRequestReports:
 		return agent.Capabilities.CanRequestReports

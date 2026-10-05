@@ -451,6 +451,42 @@ func TestLeasesBelongToTheirHolder(t *testing.T) {
 	}
 }
 
+// An operator must be able to free a slot whose holder is alive but not giving it back, without
+// waiting out the lease, and the holder's own release afterwards must not fail its command.
+func TestForceReleaseFreesAnotherAgentsSlot(t *testing.T) {
+	subject := newHarness(t)
+	subject.defineResource(t, "test", 1, 15*time.Minute)
+
+	holder := subject.newAgent(t, "holder")
+	operator := subject.newAgent(t, "operator")
+	lease := subject.acquire(t, holder, "test")
+
+	// The operator finds the lease to take back by asking who holds the resource.
+	holdings, err := subject.service.Holders(t.Context(), "test")
+	if err != nil {
+		t.Fatalf("Holders() = %v, want nil", err)
+	}
+	if len(holdings) != 1 || holdings[0].Lease.ID != lease.ID || holdings[0].Lease.AgentID != holder.ID {
+		t.Fatalf("Holders() = %+v, want only the holder's lease %s", holdings, lease.ID)
+	}
+
+	if err := subject.service.ForceRelease(t.Context(), operator.ID, lease.ID); err != nil {
+		t.Fatalf("ForceRelease() = %v, want nil", err)
+	}
+
+	status, err := subject.service.Status(t.Context(), "test")
+	if err != nil {
+		t.Fatalf("Status() = %v, want nil", err)
+	}
+	if status.ActiveLeases != 0 {
+		t.Errorf("the slot is still held: %d active, want 0", status.ActiveLeases)
+	}
+
+	if err := subject.service.Release(t.Context(), holder.ID, lease.ID); err != nil {
+		t.Errorf("Release() by the former holder = %v, want nil", err)
+	}
+}
+
 // When an agent goes stale, everything it was holding must come back, or the machine slowly
 // strangles itself.
 func TestReleaseEverythingHeldBy(t *testing.T) {
@@ -462,7 +498,7 @@ func TestReleaseEverythingHeldBy(t *testing.T) {
 	subject.acquire(t, crashed, "test")
 	subject.acquire(t, crashed, "reviewer")
 
-	released, err := subject.service.ReleaseEverythingHeldBy(t.Context(), crashed.ID, "went stale")
+	released, err := subject.service.ReleaseEverythingHeldBy(t.Context(), core.SystemActor, crashed.ID, "went stale")
 	if err != nil {
 		t.Fatalf("ReleaseEverythingHeldBy() = %v, want nil", err)
 	}

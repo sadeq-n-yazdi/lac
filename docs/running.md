@@ -143,8 +143,9 @@ operators:
   - telegram
 ```
 
-Then `lac log`, `lac agents`, `lac report`, `lac define` and `lac reload` work from any directory
-with no `--name`. Commands that take part in the work — `run`, `acquire`, `ask`, `worker`, `task` —
+Then `lac log`, `lac agents`, `lac status`, `lac report`, `lac define`, `lac evict` and `lac reload` work
+from any directory with no `--name`, as do the operator forms of `release` and `cancel`. Commands
+that take part in the work — `run`, `acquire`, `ask`, `worker`, `task` —
 keep the directory-and-pid name, so the queue still tells you which project is waiting. If two of
 your shells want the personal name at once, the second takes a unique one and says so.
 
