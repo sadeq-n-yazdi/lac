@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `lacd version` prints the version, as `lacd -version` already did. Any other argument is refused
+  instead of being ignored, so a typo no longer starts a second daemon. Shell completion offers
+  `version` after `lacd`.
+
 ## [0.5.0] - 2026-10-16
 
 ### Changed

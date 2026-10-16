@@ -534,7 +534,11 @@ _lacd() {
         -log-level|--log-level) COMPREPLY=($(compgen -W "debug info warn error" -- "$current")); return ;;
         -config|--config|-database|--database|-socket|--socket) COMPREPLY=(); return ;;
     esac
-    COMPREPLY=($(compgen -W "-config -database -log-level -socket -version" -- "$current"))
+    if (( COMP_CWORD == 1 )); then
+        COMPREPLY=($(compgen -W "version -config -database -log-level -socket -version" -- "$current"))
+    else
+        COMPREPLY=($(compgen -W "-config -database -log-level -socket -version" -- "$current"))
+    fi
 }
 complete -o default -F _lacd lacd
 `
@@ -548,7 +552,8 @@ _lacd_arguments() {
         '-database[database file]:file:_files' \
         '-log-level[log level]:level:(debug info warn error)' \
         '-socket[socket to listen on]:socket:_files' \
-        '-version[print the version and exit]'
+        '-version[print the version and exit]' \
+        '1::command:((version\:"print the version and exit"))'
 }
 
 _lac() {
@@ -591,4 +596,5 @@ complete -c lacd -o database -r -F -d 'database file'
 complete -c lacd -o log-level -x -a 'debug info warn error' -d 'log level'
 complete -c lacd -o socket -r -F -d 'socket to listen on'
 complete -c lacd -o version -d 'print the version and exit'
+complete -c lacd -f -n '__fish_use_subcommand' -a version -d 'print the version and exit'
 `
