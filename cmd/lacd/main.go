@@ -7,8 +7,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -20,24 +22,38 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "lacd: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(arguments []string, output io.Writer) error {
+	flags := flag.NewFlagSet("lacd", flag.ContinueOnError)
 	var (
-		showVersion  = flag.Bool("version", false, "print the version and exit")
-		configPath   = flag.String("config", "", "configuration file (default: $XDG_CONFIG_HOME/lac/config.yaml)")
-		socketPath   = flag.String("socket", "", "socket to listen on (overrides the configuration)")
-		databasePath = flag.String("database", "", "database file (overrides the configuration)")
-		logLevel     = flag.String("log-level", "", "debug, info, warn or error")
+		showVersion  = flags.Bool("version", false, "print the version and exit")
+		configPath   = flags.String("config", "", "configuration file (default: $XDG_CONFIG_HOME/lac/config.yaml)")
+		socketPath   = flags.String("socket", "", "socket to listen on (overrides the configuration)")
+		databasePath = flags.String("database", "", "database file (overrides the configuration)")
+		logLevel     = flags.String("log-level", "", "debug, info, warn or error")
 	)
-	flag.Parse()
+	if err := flags.Parse(arguments); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	// "lacd version" reads like "lac version", so it must answer the same way. Any other word is a
+	// mistake, and starting a daemon because of a typo is the worst way to report it.
+	switch {
+	case flags.NArg() == 1 && flags.Arg(0) == "version":
+		*showVersion = true
+	case flags.NArg() > 0:
+		return fmt.Errorf("unexpected argument %q; lacd takes only flags, or \"version\"", flags.Arg(0))
+	}
 
 	if *showVersion {
-		fmt.Fprintf(os.Stdout, "lacd %s\n", version.String())
+		fmt.Fprintf(output, "lacd %s\n", version.String())
 		return nil
 	}
 
