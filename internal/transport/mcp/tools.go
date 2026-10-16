@@ -51,7 +51,7 @@ func toolDefinitions() []tool {
 				"reason": property("string",
 					"What you are about to do, shown to the operator in the queue. For example \"running the parser tests\"."),
 				"priority": property("integer",
-					"Higher goes first. Leave unset for normal work; 10 is for something the user is waiting on."),
+					"Higher goes first. Leave unset for normal work; 10 is for something the user is waiting on; -10 is for a coverage run or other work nobody is waiting on."),
 				"no_wait": property("boolean",
 					"Return immediately if the resource is full instead of queueing. Use this only when you have something else useful to do."),
 			}, []string{"resource"}),
