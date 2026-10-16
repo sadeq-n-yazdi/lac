@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Coverage runs yield to ordinary test runs. `lac run` queues a command that produces a coverage
+  report (`-cover…`, `--cov…`, `coverage`, `make cover`) at background priority unless `--priority`
+  is given, and the skill tells agents using `lac_acquire_slot` to do the same.
+
 ## [0.4.0] - 2026-10-05
 
 ### Added

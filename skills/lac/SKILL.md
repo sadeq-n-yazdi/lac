@@ -53,6 +53,9 @@ is no lease id to keep track of and no way to forget the release.
   call it again. Do not start the work anyway.
 - Release the slot as soon as the work is done, **even if it failed**. Somebody is waiting.
 - If you lose a lease id, `lac_my_slots` lists what you are holding.
+- Coverage runs go behind ordinary test runs. `lac run` does this by itself when the command looks
+  like one (`-cover…`, `--cov…`, `coverage`, `make cover`); with `lac_acquire_slot`, pass
+  `priority: -10` yourself. Only override it if someone is actually waiting on the report.
 - Do not queue for trivial things. A single unit test, a file read, a lint run on one file: just do
   it. The queue is for work that would slow the whole machine down.
 

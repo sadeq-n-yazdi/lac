@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"sadeq.uk/lac/internal/core"
 	"sadeq.uk/lac/pkg/lacclient"
 )
 
@@ -55,6 +56,16 @@ func runRun(ctx context.Context, env *environment, arguments []string) error {
 		*reason = strings.Join(commandLine, " ")
 	}
 
+	// A coverage run is slower than a plain test run and nobody is usually waiting on it, so it
+	// yields to the other test runs unless the caller chose a priority themselves.
+	if !flagWasSet(flags, "priority") && isCoverageRun(commandLine) {
+		*priority = coveragePriority
+		if !*quiet && !env.asJSON {
+			fmt.Fprintf(os.Stderr, "lac: coverage run, queued at priority %d; pass --priority to change it\n",
+				coveragePriority)
+		}
+	}
+
 	if !*quiet && !env.asJSON {
 		reportWaiting(ctx, env, client, *resource)
 	}
@@ -93,6 +104,37 @@ func runRun(ctx context.Context, env *environment, arguments []string) error {
 	defer stopRenewing()
 
 	return execute(ctx, commandLine)
+}
+
+// coveragePriority puts a coverage run below every ordinary request.
+const coveragePriority = int(core.PriorityBackground)
+
+// isCoverageRun reports whether a command produces a coverage report: Go's -cover flags,
+// pytest-cov's --cov flags, coverage.py, or a make target named after coverage.
+func isCoverageRun(commandLine []string) bool {
+	for _, token := range commandLine {
+		switch {
+		case strings.HasPrefix(token, "-cover"),
+			strings.HasPrefix(token, "--cov"),
+			token == "cover",
+			strings.Contains(token, "coverage"):
+			return true
+		}
+	}
+
+	return false
+}
+
+// flagWasSet reports whether the caller gave the flag, as opposed to it holding its default.
+func flagWasSet(flags *flag.FlagSet, name string) bool {
+	found := false
+	flags.Visit(func(each *flag.Flag) {
+		if each.Name == name {
+			found = true
+		}
+	})
+
+	return found
 }
 
 // reportWaiting tells the operator why nothing is happening, but only when something really is in
