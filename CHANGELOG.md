@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-16
+
 ### Changed
 
 - Coverage runs yield to ordinary test runs. `lac run` queues a command that produces a coverage
@@ -196,7 +198,8 @@ other, queue for the scarce things, hand work to a shared worker, and tell you w
 - CI on Linux and macOS: build, `go vet`, golangci-lint (including gosec), `govulncheck`, and the
   whole suite under the race detector.
 
-[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/sadeq-n-yazdi/lac/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/sadeq-n-yazdi/lac/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/sadeq-n-yazdi/lac/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/sadeq-n-yazdi/lac/compare/v0.2.1...v0.2.2
